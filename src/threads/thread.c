@@ -28,6 +28,9 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+/* List of blocked process.*/
+static struct list blocked_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -204,6 +207,32 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
+void
+sleep_thread (int64_t awake_time)
+{
+  struct thread *cur = thread_current();
+  ASSERT(cur != idle_thread)
+
+  enum intr_level old_level = intr_disable ();
+  cur->awake_time = awake_time;
+  thread_block();
+  intr_set_level (old_level);
+}
+
+void 
+awake_thread (int64_t awake_time)
+{
+  struct list_elem *e;
+  for(e = list_begin(&blocked_list); e != list_end(&blocked_list); e = list_next(e))
+  {
+    struct thread *cur = list_entry(e, struct thread, elem);
+    if(cur->awake_time >= awake_time)
+      thread_unblock(cur);
+      e = list_remove(e);
+  }
+}
+
+
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
 
@@ -215,8 +244,9 @@ thread_block (void)
 {
   ASSERT (!intr_context ());
   ASSERT (intr_get_level () == INTR_OFF);
-
-  thread_current ()->status = THREAD_BLOCKED;
+  struct thread *cur = thread_current();
+  cur->status = THREAD_BLOCKED;
+  list_push_back(&blocked_list, &cur->elem);
   schedule ();
 }
 
