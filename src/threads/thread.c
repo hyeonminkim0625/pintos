@@ -24,6 +24,8 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+static struct list blocked_list;
+
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
@@ -92,6 +94,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&blocked_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -202,6 +205,38 @@ thread_create (const char *name, int priority,
   thread_unblock (t);
 
   return tid;
+}
+
+void
+sleep_thread(int64_t awake_tick)
+{
+  struct thread *cur = thread_current();
+  ASSERT(cur != idle_thread)
+
+  enum intr_level old_level = intr_disable ();
+  
+  cur->awake_tick = awake_tick;
+  list_push_back(&blocked_list, &cur->elem);
+  thread_block();
+  
+  intr_set_level (old_level);
+}
+
+void
+awake_thread(int64_t awake_tick)
+//awake_tick : 몇시에 깨울지
+{
+  struct list_elem *e;
+  
+  for(e = list_begin(&blocked_list); e != list_end(&blocked_list); e = list_next(e)){
+    struct thread *cur = list_entry(e, struct thread, elem);
+    if(cur->awake_tick <= awake_tick){
+      list_remove(e);
+      thread_unblock(cur);
+    }
+    if (e->next == NULL)
+      break;
+  }
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
