@@ -28,7 +28,6 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
-/* List of blocked process.*/
 static struct list blocked_list;
 
 /* Idle thread. */
@@ -95,7 +94,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
-
+  list_init (&blocked_list);
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -207,32 +206,6 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
-void
-sleep_thread (int64_t awake_time)
-{
-  struct thread *cur = thread_current();
-  ASSERT(cur != idle_thread)
-
-  enum intr_level old_level = intr_disable ();
-  cur->awake_time = awake_time;
-  thread_block();
-  intr_set_level (old_level);
-}
-
-void 
-awake_thread (int64_t awake_time)
-{
-  struct list_elem *e;
-  for(e = list_begin(&blocked_list); e != list_end(&blocked_list); e = list_next(e))
-  {
-    struct thread *cur = list_entry(e, struct thread, elem);
-    if(cur->awake_time >= awake_time)
-      thread_unblock(cur);
-      e = list_remove(e);
-  }
-}
-
-
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
 
@@ -244,9 +217,7 @@ thread_block (void)
 {
   ASSERT (!intr_context ());
   ASSERT (intr_get_level () == INTR_OFF);
-  struct thread *cur = thread_current();
-  cur->status = THREAD_BLOCKED;
-  list_push_back(&blocked_list, &cur->elem);
+  thread_current()->status = THREAD_BLOCKED;
   schedule ();
 }
 
@@ -270,6 +241,43 @@ thread_unblock (struct thread *t)
   list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
+}
+
+void
+sleep_thread (int64_t awake_time)
+{
+  struct thread *cur = thread_current();
+  enum intr_level old_level;
+
+  ASSERT(cur != idle_thread);
+  old_level = intr_disable();
+  cur->awake_time = awake_time;
+  list_push_back(&blocked_list, &cur->elem);
+  thread_block();
+  intr_set_level(old_level);
+}
+
+int64_t
+awake_thread (int64_t awake_time)
+{
+  struct list_elem *e;
+  int64_t new_min_time = INT64_MAX;
+  for (e = list_begin(&blocked_list); e != list_end(&blocked_list); )
+  {
+    struct thread *cur = list_entry (e, struct thread, elem);
+    int64_t thread_awake_time = cur->awake_time;
+    if (thread_awake_time <= awake_time){	// 스레드가 일어날 시간이 되었는지 확인
+      e = list_remove(e);	// sleep list 에서 제거
+      thread_unblock(cur);	// 스레드 unblock
+    }
+    else
+    {
+      if(thread_awake_time < new_min_time)
+        new_min_time = thread_awake_time;
+      e = list_next (e);
+    }
+  }
+  return new_min_time;
 }
 
 /* Returns the name of the running thread. */
