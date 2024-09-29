@@ -119,6 +119,8 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void sleep_thread (int64_t awake_time);
 void awake_thread (int64_t awake_time);
+bool compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux);
+
 void thread_block (void);
 void thread_unblock (struct thread *);
 
