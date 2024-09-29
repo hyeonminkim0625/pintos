@@ -228,14 +228,15 @@ awake_thread(int64_t awake_tick)
 {
   struct list_elem *e;
   
-  for(e = list_begin(&blocked_list); e != list_end(&blocked_list); e = list_next(e)){
+  for(e = list_begin(&blocked_list); e != list_end(&blocked_list);){
     struct thread *cur = list_entry(e, struct thread, elem);
     if(cur->awake_tick <= awake_tick){
-      list_remove(e);
+      e = list_remove(e);
       thread_unblock(cur);
     }
-    if (e->next == NULL)
-      break;
+    else{
+      e = list_next(e);
+    }
   }
 }
 
