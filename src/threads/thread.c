@@ -203,6 +203,7 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+  check_priority();
 
   return tid;
 }
@@ -233,6 +234,7 @@ awake_thread(int64_t awake_tick)
     if(cur->awake_tick <= awake_tick){
       e = list_remove(e);
       thread_unblock(cur);
+      check_priority();
     }
     else{
       e = list_next(e);
@@ -262,6 +264,20 @@ thread_block (void)
   schedule ();
 }
 
+void check_priority(void){
+  if (thread_current() == idle_thread || list_empty(&ready_list)){
+    return;
+  }
+  else{
+    struct list_elem *max_elem = list_front(&ready_list);
+    int max_priority_in_ready_list = list_entry(max_elem, struct thread, elem)->priority;
+    
+    if (thread_current()->priority < max_priority_in_ready_list){
+      thread_yield();
+    }
+  }
+}
+
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
@@ -270,6 +286,10 @@ thread_block (void)
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
+/*
+When a thread with a higher priority than the running thread becomes ready,
+the current thread should immediately yield the CPU.
+*/
 void
 thread_unblock (struct thread *t) 
 {
@@ -282,9 +302,6 @@ thread_unblock (struct thread *t)
   //list_push_back (&ready_list, &t->elem);
   list_insert_ordered(&ready_list, &t->elem, compare_priority, NULL);
   t->status = THREAD_READY;
-  if (t->priority > thread_current()->priority && thread_current() != idle_thread) {
-    thread_yield();
-  }
   intr_set_level (old_level);
 }
 
