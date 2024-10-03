@@ -297,6 +297,17 @@ cond_init (struct condition *cond)
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
+
+bool compare_priority_for_cond (const struct list_elem *a, const struct list_elem *b, void *aux){
+    struct list *sema_a_waiters = &list_entry(a, struct semaphore_elem, elem)->semaphore.waiters;
+    struct list *sema_b_waiters = &list_entry(b, struct semaphore_elem, elem)->semaphore.waiters;
+
+    int a_priority = list_entry (list_begin (sema_a_waiters), struct thread, elem)->priority;
+    int b_priority = list_entry (list_begin (sema_b_waiters), struct thread, elem)->priority;
+
+    return a_priority < b_priority;
+}
+
 void
 cond_wait (struct condition *cond, struct lock *lock) 
 {
@@ -308,7 +319,7 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  list_push_back (&cond->waiters, &waiter.elem);
+  list_insert_ordered(&cond->waiters, &waiter.elem, compare_priority_for_cond, NULL);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
@@ -329,9 +340,16 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
-  if (!list_empty (&cond->waiters)) 
-    sema_up (&list_entry (list_pop_front (&cond->waiters),
-                          struct semaphore_elem, elem)->semaphore);
+  if (!list_empty (&cond->waiters)){
+    struct list_elem *max_elem = list_max(&cond->waiters, compare_priority_for_cond, NULL);
+    /*waiters -> semaphore_elem으로 구성
+    각 cond에 대해 여러 semaphore_elem이 있을 수 있는데
+    각 semaphore_elem에 대해 waiters를 비교하여 가장 높은 우선순위를 가진 semaphore_elem을 선택
+    -> priority queue 구현은 어려워 보임.
+    */
+    list_remove(max_elem);
+    sema_up (&list_entry(max_elem, struct semaphore_elem, elem )->semaphore);
+  }
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -346,6 +364,8 @@ cond_broadcast (struct condition *cond, struct lock *lock)
   ASSERT (cond != NULL);
   ASSERT (lock != NULL);
 
-  while (!list_empty (&cond->waiters))
+  while (!list_empty (&cond->waiters)){
     cond_signal (cond, lock);
+  }
+  check_priority();
 }

@@ -18,6 +18,7 @@ void sema_up (struct semaphore *);
 void sema_self_test (void);
 
 bool compare_priority_synch (const struct list_elem *a, const struct list_elem *b, void *aux);
+bool compare_priority_for_cond (const struct list_elem *a, const struct list_elem *b, void *aux);
 /* Lock. */
 struct lock 
   {
