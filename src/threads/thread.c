@@ -24,6 +24,8 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+static struct list blocked_list;
+
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
@@ -92,6 +94,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&blocked_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -200,8 +203,49 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+  check_priority();
 
   return tid;
+}
+
+void
+sleep_thread(int64_t awake_tick)
+{
+  struct thread *cur = thread_current();
+  ASSERT(cur != idle_thread)
+
+  enum intr_level old_level = intr_disable ();
+  
+  cur->awake_tick = awake_tick;
+  list_push_back(&blocked_list, &cur->elem);
+  thread_block();
+  
+  intr_set_level (old_level);
+}
+
+void
+awake_thread(int64_t awake_tick)
+//awake_tick : 몇시에 깨울지
+{
+  struct list_elem *e;
+  
+  for(e = list_begin(&blocked_list); e != list_end(&blocked_list);){
+    struct thread *cur = list_entry(e, struct thread, elem);
+    if(cur->awake_tick <= awake_tick){
+      e = list_remove(e);
+      thread_unblock(cur);
+      check_priority();
+    }
+    else{
+      e = list_next(e);
+    }
+  }
+}
+
+bool compare_priority (const struct list_elem *a, const struct list_elem *b, void *aux){
+  struct thread *thread_a = list_entry(a, struct thread, elem);
+  struct thread *thread_b = list_entry(b, struct thread, elem);
+  return thread_a->priority > thread_b->priority;
 }
 
 /* Puts the current thread to sleep.  It will not be scheduled
@@ -220,6 +264,20 @@ thread_block (void)
   schedule ();
 }
 
+void check_priority(void){
+  if (thread_current() == idle_thread || list_empty(&ready_list)){
+    return;
+  }
+  else{
+    struct list_elem *max_elem = list_front(&ready_list);
+    int max_priority_in_ready_list = list_entry(max_elem, struct thread, elem)->priority;
+    
+    if (thread_current()->priority < max_priority_in_ready_list){
+      thread_yield();
+    }
+  }
+}
+
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
@@ -228,6 +286,10 @@ thread_block (void)
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
+/*
+When a thread with a higher priority than the running thread becomes ready,
+the current thread should immediately yield the CPU.
+*/
 void
 thread_unblock (struct thread *t) 
 {
@@ -237,7 +299,8 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  //list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, compare_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -308,7 +371,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, compare_priority, NULL);
+    //list_push_back (&ready_list, &cur->elem);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -335,7 +399,27 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  /*
+  When a thread lowers its priority such that it no longer has the highest priority,
+  the thread should immediately yield the CPU.
+  */
+  
+  if (list_empty(&ready_list)){
+    thread_current()->priority = new_priority;
+  }
+  else{
+    struct list_elem *max_elem = list_front(&ready_list);
+    int max_priority_in_ready_list = list_entry(max_elem, struct thread, elem)->priority;
+    
+    if (new_priority < thread_current()->priority && new_priority < max_priority_in_ready_list){
+      //기존것보다 낮추고, highest priority가 아닌 경우
+      thread_current()->priority = new_priority;
+      thread_yield();
+    }
+    else{
+      thread_current()->priority = new_priority;
+    }
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -492,8 +576,15 @@ next_thread_to_run (void)
 {
   if (list_empty (&ready_list))
     return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  else{
+    /*
+    When threads are ready to run,
+    a thread with the highest priority should be scheduled first.
+    */
+    struct list_elem *max_elem = list_pop_front(&ready_list);
+    return list_entry(max_elem, struct thread, elem);
+  }
+  //list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
 /* Completes a thread switch by activating the new thread's page
