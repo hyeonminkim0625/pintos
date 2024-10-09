@@ -28,6 +28,7 @@ void lock_init (struct lock *);
 void lock_acquire (struct lock *);
 bool lock_try_acquire (struct lock *);
 void lock_release (struct lock *);
+void update_donation_priority(void);
 bool lock_held_by_current_thread (const struct lock *);
 
 /* Condition variable. */
@@ -36,7 +37,10 @@ struct condition
     struct list waiters;        /* List of waiting threads. */
   };
 
+
 void cond_init (struct condition *);
+bool compare_donations_priority (const struct list_elem *a, const struct list_elem *b, void *aux);
+bool compare_waiters_priority (const struct list_elem *a, const struct list_elem *b, void *aux);
 void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);

@@ -176,7 +176,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
-  // awake_thread(ticks);
   if (ticks >= min_awake_time)
     min_awake_time = awake_thread (ticks);
 }

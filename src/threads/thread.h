@@ -90,6 +90,10 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
     int64_t awake_time;
+    int own_priority;
+    struct list donation_list;
+    struct list_elem donation_elem;
+    struct lock *wait_lock;
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
@@ -118,6 +122,9 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
+bool compare_thread_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+void check_priority(void);
+void check_donation(void);
 int64_t awake_thread (int64_t awake_time);
 void sleep_thread (int64_t awake_time);
 
