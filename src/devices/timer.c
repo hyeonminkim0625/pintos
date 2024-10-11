@@ -92,11 +92,10 @@ void
 timer_sleep (int64_t ticks) 
 {
   int64_t start = timer_ticks ();
-  int64_t awake_time = ticks + start;
+  int64_t awake_time = ticks + start; 
   ASSERT (intr_get_level () == INTR_ON);
   if (awake_time < min_awake_time)
     min_awake_time = awake_time;
-  // printf(min_awake_time);
   sleep_thread(awake_time);
 }
 
@@ -176,8 +175,25 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
-  if (ticks >= min_awake_time)
-    min_awake_time = awake_thread (ticks);
+
+  if(thread_mlfqs)
+  {
+    update_thread_recent_cpu();
+
+    if(ticks % 4 == 0)
+      update_mlfqs(PRIORITY);
+  
+    if(ticks % TIMER_FREQ == 0)
+    {
+      update_mlfqs(RECENT_CPU);
+      calculate_load_avg();
+    }
+
+  }
+  if (ticks >= min_awake_time){
+    int64_t temp = awake_thread(ticks);
+    if (temp != INT64_MAX) min_awake_time = temp;
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

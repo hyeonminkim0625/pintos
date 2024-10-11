@@ -205,9 +205,9 @@ lock_acquire (struct lock *lock)
   {
     cur->wait_lock = lock;
     list_insert_ordered(&lock->holder->donation_list,&cur->donation_elem,compare_donations_priority,NULL);
-    check_donation();
+    if(!thread_mlfqs)
+      check_donation();
   }
-
   sema_down (&lock->semaphore);
   cur->wait_lock = NULL;
   lock->holder = cur;
@@ -243,16 +243,17 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-  struct thread *cur = thread_current();
-  struct list_elem *e;
-  for(e = list_begin(&cur->donation_list); e != list_end(&cur->donation_list) ; e = list_next(e))
-  {
-    struct thread *temp = list_entry(e,struct thread, donation_elem);
-    if(temp->wait_lock == lock)
-      list_remove(&temp->donation_elem);
+  if(!thread_mlfqs){
+    struct thread *cur = thread_current();
+    struct list_elem *e;
+    for(e = list_begin(&cur->donation_list); e != list_end(&cur->donation_list) ; e = list_next(e))
+    {
+      struct thread *temp = list_entry(e,struct thread, donation_elem);
+      if(temp->wait_lock == lock)
+        list_remove(&temp->donation_elem);
+    }
+    update_donation_priority();
   }
-  update_donation_priority();
-
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
@@ -260,14 +261,14 @@ lock_release (struct lock *lock)
 void
 update_donation_priority(void)
 {
-  struct thread *t = thread_current();
-  if(list_empty(&t->donation_list))
-    t->priority = t->own_priority;
+  struct thread *cur = thread_current();
+  if(list_empty(&cur->donation_list))
+    cur->priority = cur->own_priority;
   else
   {
-    int max_donation_priority = list_entry(list_front(&t->donation_list), struct thread, donation_elem)->priority;
-    if(max_donation_priority > t->own_priority)
-      t->priority = max_donation_priority;
+    int max_donation_priority = list_entry(list_front(&cur->donation_list), struct thread, donation_elem)->priority;
+    if(max_donation_priority > cur->own_priority)
+      cur->priority = max_donation_priority;
   }
 }
 

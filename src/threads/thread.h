@@ -23,6 +23,11 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+#define NICE_DEFAULT 0
+#define RECENT_CPU_DEFAULT 0
+#define LOAD_AVG_DEFAULT 0
+#define RECENT_CPU 0
+#define PRIORITY 1
 
 /* A kernel thread or user process.
 
@@ -82,20 +87,23 @@ typedef int tid_t;
    blocked state is on a semaphore wait list. */
 struct thread
   {
-    /* Owned by thread.c. */
-    tid_t tid;                          /* Thread identifier. */
-    enum thread_status status;          /* Thread state. */
-    char name[16];                      /* Name (for debugging purposes). */
-    uint8_t *stack;                     /* Saved stack pointer. */
-    int priority;                       /* Priority. */
-    struct list_elem allelem;           /* List element for all threads list. */
-    int64_t awake_time;
-    int own_priority;
-    struct list donation_list;
-    struct list_elem donation_elem;
-    struct lock *wait_lock;
-    /* Shared between thread.c and synch.c. */
-    struct list_elem elem;              /* List element. */
+   /* Owned by thread.c. */
+   tid_t tid;                          /* Thread identifier. */
+   enum thread_status status;          /* Thread state. */
+   char name[16];                      /* Name (for debugging purposes). */
+   uint8_t *stack;                     /* Saved stack pointer. */
+   int priority;                       /* Priority. */
+   struct list_elem allelem;           /* List element for all threads list. */
+   int64_t awake_time;
+   int own_priority;
+   struct list donation_list;
+   struct list_elem donation_elem;
+   struct lock *wait_lock;
+   /* Shared between thread.c and synch.c. */
+   struct list_elem elem;              /* List element. */
+   int niceness;
+   int recent_cpu;
+
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -126,6 +134,11 @@ bool compare_thread_priority(const struct list_elem *a, const struct list_elem *
 void check_priority(void);
 void check_donation(void);
 int64_t awake_thread (int64_t awake_time);
+void calculate_priority(struct thread *t);
+void calculate_load_avg(void);
+void calculate_recent_cpu(struct thread *t);
+void update_mlfqs(int type);
+void update_thread_recent_cpu(void);
 void sleep_thread (int64_t awake_time);
 
 struct thread *thread_current (void);
