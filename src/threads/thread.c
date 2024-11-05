@@ -504,7 +504,6 @@ thread_set_nice (int nice UNUSED)
   calculate_priority(cur);
   check_priority();
   intr_set_level (old_level);
-
 }
 
 /* Returns the current thread's nice value. */

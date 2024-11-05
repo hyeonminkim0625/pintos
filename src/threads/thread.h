@@ -103,6 +103,7 @@ struct thread
    struct list_elem elem;              /* List element. */
    int niceness;
    int recent_cpu;
+   int exit_code;
 
 
 #ifdef USERPROG
