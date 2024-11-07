@@ -20,7 +20,9 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-void setup_usercommand(void **esp, int argc, char **argv);
+
+int argc;
+char *argv[64];
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -46,6 +48,7 @@ process_execute (const char *file_name)
   if (fn_temp == NULL)
     return TID_ERROR;
   strlcpy (fn_temp, file_name, PGSIZE);
+
   /* Create a new thread to execute FILE_NAME. */
   token=strtok_r(fn_temp, " ", &temp);
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
@@ -64,8 +67,6 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-  int argc;
-  char *argv[64];
   char *fn_temp;
   char *token;
   char *temp;
@@ -92,7 +93,6 @@ start_process (void *file_name_)
   success = load (argv[0], &if_.eip, &if_.esp);
 
   if(success){
-    setup_usercommand(&if_.esp, argc, argv);
     hex_dump(if_.esp,if_.esp, PHYS_BASE - if_.esp, true);
   }
   /* If load failed, quit. */
@@ -467,6 +467,8 @@ setup_stack (void **esp)
 {
   uint8_t *kpage;
   bool success = false;
+  int i;
+  char *arg_addr[argc];
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
@@ -475,46 +477,40 @@ setup_stack (void **esp)
       if (success)
       {
         *esp = PHYS_BASE;
+        for (i=0; i < argc; i++) {
+          int len = strlen(argv[argc-1-i]) + 1;
+          *esp -= len;
+          strlcpy(*esp, argv[argc-1-i], len);
+          arg_addr[i] = *esp;
+        }
+        
+        // 2. Word align (4바이트 배수로 맞추기 위해 패딩 추가)
+        *esp -= ((uint32_t)*esp) % 4;
+
+        // 3. 각 인자들의 주소를 argv 배열에 역순으로 푸시
+        *esp -= 4; // NULL pointer sentinel
+        *(char **)(*esp) = 0;
+        for (i=0; i < argc; i++) {
+            *esp -= 4;
+            **(uint32_t **)(esp) = arg_addr[argc-1-i];
+        }
+
+        // 4. argv 포인터(배열의 시작 주소)를 스택에 푸시
+        *esp -= 4;
+        **(uint32_t **)esp = (uint32_t) (*esp + 4);
+
+        // 5. argc를 스택에 푸시
+        *esp -= 4;
+        *(uint32_t *)(*esp) = argc;
+
+        // 6. return address로 사용할 0을 스택에 푸시
+        *esp -= 4;
+        **(uint32_t  **)(esp) = 0;
       }
       else
         palloc_free_page (kpage);
     }
   return success;
-}
-
-void setup_usercommand(void **esp, int argc, char**argv) {
-    int i;
-    char *arg_addr[argc];
-
-    for (i=0; i < argc; i++) {
-        int len = strlen(argv[argc-1-i]) + 1;
-        *esp -= len;
-        strlcpy(*esp, argv[argc-1-i], len);
-        arg_addr[i] = *esp;
-    }
-
-    // 2. Word align (4바이트 배수로 맞추기 위해 패딩 추가)
-    *esp -= ((uint32_t)*esp) % 4;
-
-    // 3. 각 인자들의 주소를 argv 배열에 역순으로 푸시
-    *esp -= 4; // NULL pointer sentinel
-    *(char **)(*esp) = 0;
-    for (i=0; i < argc; i++) {
-        *esp -= 4;
-        **(uint32_t **)(esp) = arg_addr[argc-1-i];
-    }
-
-    // 4. argv 포인터(배열의 시작 주소)를 스택에 푸시
-    *esp -= 4;
-    **(uint32_t **)esp = (uint32_t) (*esp + 4);
-
-    // 5. argc를 스택에 푸시
-    *esp -= 4;
-    *(uint32_t *)(*esp) = argc;
-
-    // 6. return address로 사용할 0을 스택에 푸시
-    *esp -= 4;
-    **(uint32_t  **)(esp) = 0;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
