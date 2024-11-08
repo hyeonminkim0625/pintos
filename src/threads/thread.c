@@ -631,6 +631,12 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->donation_list);
   t->wait_lock = NULL;
   t->magic = THREAD_MAGIC;
+#ifdef USERPROG
+  list_init(&t->child_lists);
+  t->parent = thread_current();
+  t->loading = false;
+  sema_init(&t->wait, 0);
+#endif
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

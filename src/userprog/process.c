@@ -17,6 +17,7 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -52,6 +53,10 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   token=strtok_r(fn_temp, " ", &temp);
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
+  
+  // 자식 thread를 만들고 난 후 자식이 load되기 전까지 죽으면 안되기 때문에 sema_down으로 기다리게 만듦
+  sema_down(&thread_current()->exec);
+
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
 
@@ -94,6 +99,8 @@ start_process (void *file_name_)
 
   if(success){
     hex_dump(if_.esp,if_.esp, PHYS_BASE - if_.esp, true);
+    //성공적으로 load되면 부모의 sema를 up 시켜 깨어나게 만듦
+    sema_up(&thread_current()->parent->exec);
   }
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -122,9 +129,32 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  while(1){
+  struct thread* cur = thread_current();
+  struct list_elem e;
+  struct thread *child_thread = NULL;
+  struct list *child_list = cur->child_lists;
+  struct thread *temp;
+  int exit_code;
+
+  //자식들 중 해당 tid가 있는지 확인
+  for(e = list_begin(&child_list); e != list_end(&child_list); e = list_next(e))
+  {
+    temp = list_entry(e, struct thread, child_elem);
+    if(temp->tid == child_tid)
+    {
+      child_thread = temp;
+      break; 
+    }
   }
-  return -1;
+
+  if(!child_thread) // 없으면 -1 리턴
+    return -1;
+
+  //자식이 죽기까지 sema_down해서 기다리고 죽으면 코드 받고 리스트에서 제거함
+  sema_down(&cur->wait);
+  exit_code = child_thread->exit_code;
+  list_remove(child_thread->child_elem);
+  return exit_code;
 }
 
 /* Free the current process's resources. */
@@ -133,6 +163,8 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  // 곧 죽으니 기다리고 있는 부모 깨움
+  sema_up(&cur->parent->wait);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */

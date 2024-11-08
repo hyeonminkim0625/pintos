@@ -53,13 +53,12 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
     case SYS_EXEC:
     {
-      pid_t pid = exec((const char*)argv[0]);
-      if(pid == -1) exit(-1);
+      f->eax = exec((const char*)argv[0]);
       break;
     }
     case SYS_WAIT:
     {
-      exit(-1);
+      f->eax = process_exit((tid_t) argv[0])
       break;
     }
     case SYS_CREATE:
@@ -146,10 +145,13 @@ exit(int status)
 pid_t
 exec (const char *cmd_line)
 {
+  tid_t tid;
   int len = strlen(cmd_line) + 1;
   char *fn_copy = palloc_get_page(0);
   if(!fn_copy) exit(-1);
   strlcpy(fn_copy, cmd_line, len);
 
-  return process_execute(fn_copy);
+  tid = process_execute(fn_copy);
+  if (tid == -1) exit(tid);
+  return tid;
 }
