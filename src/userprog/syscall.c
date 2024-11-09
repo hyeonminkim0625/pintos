@@ -11,15 +11,19 @@
 #include "filesys/file.h"
 #include "userprog/process.h"
 #include "threads/palloc.h"
+#include "threads/synch.h"
 #include <string.h>
 
 
 static void syscall_handler (struct intr_frame *);
+struct lock filelock;
+
 
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+  lock_init(&filelock);
 }
 
 static void
@@ -47,8 +51,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
     case SYS_EXIT:
     {
-      int status = *(int *)(esp + 4);
-      exit((int) status);
+      exit((int) argv[0]);
       break;
     }
     case SYS_EXEC:
@@ -58,17 +61,17 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
     case SYS_WAIT:
     {
-      f->eax = process_exit((tid_t) argv[0])
+      f->eax = process_wait((tid_t) argv[0]);
       break;
     }
     case SYS_CREATE:
     {
-      exit(-1);
+      f->eax = create((const char*)argv[0], (unsigned int) argv[1]);
       break;
     }
     case SYS_REMOVE:
     {
-      exit(-1);
+      f->eax = remove((const char*) argv[0]);
       break;
     }
     case SYS_OPEN:
@@ -124,7 +127,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 void 
 check_addr(void *addr)
 {
-  if(!is_user_vaddr(addr) || !addr)
+  if(!is_user_vaddr(addr) || addr == NULL)
     exit(-1);
 }
 
@@ -151,7 +154,65 @@ exec (const char *cmd_line)
   if(!fn_copy) exit(-1);
   strlcpy(fn_copy, cmd_line, len);
 
-  tid = process_execute(fn_copy);
-  if (tid == -1) exit(tid);
-  return tid;
+  return process_execute(fn_copy);
+}
+
+bool
+create (const char *file, unsigned initial_size)
+{
+  bool success;
+  check_addr((void*)file);
+  lock_acquire(&filelock);
+  success = filesys_create(file, initial_size);
+  lock_release(&filelock);
+  return success;
+}
+
+bool
+remove (const char *file)
+{
+  check_addr((void*)file);
+  return filesys_remove(file);
+}
+
+int
+open (const char *file)
+{
+
+}
+
+int
+filesize (int fd)
+{
+
+}
+
+int
+read (int fd, void *buffer, unsigned size)
+{
+
+}
+
+int
+write (int fd, const void *buffer, unsigned size)
+{
+
+}
+
+void
+seek (int fd, unsigned position)
+{
+
+}
+
+unsigned
+tell(int fd)
+{
+
+}
+
+void
+close (int fd)
+{
+
 }

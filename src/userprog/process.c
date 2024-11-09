@@ -72,6 +72,7 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
+  struct thread *cur = thread_current();
   char *fn_temp;
   char *token;
   char *temp;
@@ -100,7 +101,8 @@ start_process (void *file_name_)
   if(success){
     hex_dump(if_.esp,if_.esp, PHYS_BASE - if_.esp, true);
     //성공적으로 load되면 부모의 sema를 up 시켜 깨어나게 만듦
-    sema_up(&thread_current()->parent->exec);
+    cur->loading = true;
+    sema_up(&cur->parent->exec);
   }
   /* If load failed, quit. */
   palloc_free_page (file_name);
