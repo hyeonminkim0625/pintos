@@ -19,6 +19,8 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 
+#include <list.h>
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -132,14 +134,14 @@ int
 process_wait (tid_t child_tid UNUSED) 
 {
   struct thread* cur = thread_current();
-  struct list_elem e;
+  struct list_elem *e;
   struct thread *child_thread = NULL;
-  struct list *child_list = cur->child_lists;
+  struct list *child_list = &cur->child_lists;
   struct thread *temp;
   int exit_code;
 
   //자식들 중 해당 tid가 있는지 확인
-  for(e = list_begin(&child_list); e != list_end(&child_list); e = list_next(e))
+  for(e = list_begin(child_list); e != list_end(child_list); e = list_next(e))
   {
     temp = list_entry(e, struct thread, child_elem);
     if(temp->tid == child_tid)
@@ -153,9 +155,9 @@ process_wait (tid_t child_tid UNUSED)
     return -1;
 
   //자식이 죽기까지 sema_down해서 기다리고 죽으면 코드 받고 리스트에서 제거함
-  sema_down(&cur->wait);
+  sema_down(cur->wait);
   exit_code = child_thread->exit_code;
-  list_remove(child_thread->child_elem);
+  list_remove(&child_thread->child_elem);
   return exit_code;
 }
 
