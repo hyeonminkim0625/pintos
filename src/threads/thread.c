@@ -12,6 +12,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -200,6 +201,14 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  #ifdef USERPROG
+    list_push_back(&(t->parent->child_lists), &(t->child_elem));
+    t->loading = false;
+    t->exit_code = -1;
+    sema_init(&t->wait, 0);
+    sema_init(&t->exec, 0);
+  #endif
+
   /* Add to run queue. */
   thread_unblock (t);
   check_priority();
@@ -269,7 +278,7 @@ compare_thread_priority (const struct list_elem *a, const struct list_elem *b, v
 void check_priority(void){
   if (thread_current() == idle_thread || list_empty(&ready_list))
     return;
-  if(thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
+  if(!intr_context() && thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
     thread_yield();
 }
 
@@ -504,7 +513,6 @@ thread_set_nice (int nice UNUSED)
   calculate_priority(cur);
   check_priority();
   intr_set_level (old_level);
-
 }
 
 /* Returns the current thread's nice value. */
@@ -632,6 +640,14 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->donation_list);
   t->wait_lock = NULL;
   t->magic = THREAD_MAGIC;
+#ifdef USERPROG
+  if (t != initial_thread)
+      t->parent = thread_current();
+  else
+      t->parent = NULL;
+  list_init(&t->child_lists);
+  
+#endif
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

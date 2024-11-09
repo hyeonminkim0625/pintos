@@ -17,9 +17,15 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
+
+#include <list.h>
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+
+int argc;
+char *argv[64];
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -30,6 +36,9 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
+  char *fn_temp;
+  char *token;
+  char *temp;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -38,10 +47,22 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  fn_temp = palloc_get_page (0);
+  if (fn_temp == NULL)
+    return TID_ERROR;
+  strlcpy (fn_temp, file_name, PGSIZE);
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  token=strtok_r(fn_temp, " ", &temp);
+  tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
+  
+  // 자식 thread를 만들고 난 후 자식이 load되기 전까지 죽으면 안되기 때문에 sema_down으로 기다리게 만듦
+  sema_down(&thread_current()->exec);
+
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+    palloc_free_page (fn_copy);
+
+  palloc_free_page(fn_temp);
   return tid;
 }
 
@@ -53,17 +74,41 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
+  struct thread *cur = thread_current();
+  char *fn_temp;
+  char *token;
+  char *temp;
+
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
 
+  fn_temp = palloc_get_page (0);
+  strlcpy (fn_temp, file_name, PGSIZE);
+
+  argc = 0;
+  for(token=strtok_r(fn_temp, " ", &temp); token != NULL ; token = strtok_r(NULL, " ", &temp))
+  {
+    argv[argc] = token;
+    argc++;
+  }
+  argv[argc] = NULL;
+
+
+  success = load (argv[0], &if_.eip, &if_.esp);
+
+  if(success){
+    hex_dump(if_.esp,if_.esp, PHYS_BASE - if_.esp, true);
+    //성공적으로 load되면 부모의 sema를 up 시켜 깨어나게 만듦
+    cur->loading = true;
+    sema_up(&cur->parent->exec);
+  }
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
+  if (!success)
     thread_exit ();
 
   /* Start the user process by simulating a return from an
@@ -88,7 +133,32 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  return -1;
+  struct thread* cur = thread_current();
+  struct list_elem *e;
+  struct thread *child_thread = NULL;
+  struct list *child_list = &cur->child_lists;
+  struct thread *temp;
+  int exit_code;
+
+  //자식들 중 해당 tid가 있는지 확인
+  for(e = list_begin(child_list); e != list_end(child_list); e = list_next(e))
+  {
+    temp = list_entry(e, struct thread, child_elem);
+    if(temp->tid == child_tid)
+    {
+      child_thread = temp;
+      break; 
+    }
+  }
+
+  if(!child_thread) // 없으면 -1 리턴
+    return -1;
+
+  //자식이 죽기까지 sema_down해서 기다리고 죽으면 코드 받고 리스트에서 제거함
+  sema_down(&cur->wait);
+  exit_code = child_thread->exit_code;
+  list_remove(&child_thread->child_elem);
+  return exit_code;
 }
 
 /* Free the current process's resources. */
@@ -97,6 +167,8 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  // 곧 죽으니 기다리고 있는 부모 깨움
+  sema_up(&cur->parent->wait);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -431,13 +503,46 @@ setup_stack (void **esp)
 {
   uint8_t *kpage;
   bool success = false;
+  int i;
+  char *arg_addr[argc];
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
+      {
         *esp = PHYS_BASE;
+        for (i=0; i < argc; i++) {
+          int len = strlen(argv[argc-1-i]) + 1;
+          *esp -= len;
+          strlcpy(*esp, argv[argc-1-i], len);
+          arg_addr[i] = *esp;
+        }
+        
+        // 2. Word align (4바이트 배수로 맞추기 위해 패딩 추가)
+        *esp -= ((uint32_t)*esp) % 4;
+
+        // 3. 각 인자들의 주소를 argv 배열에 역순으로 푸시
+        *esp -= 4; // NULL pointer sentinel
+        *(char **)(*esp) = 0;
+        for (i=0; i < argc; i++) {
+            *esp -= 4;
+            **(uint32_t **)(esp) = arg_addr[argc-1-i];
+        }
+
+        // 4. argv 포인터(배열의 시작 주소)를 스택에 푸시
+        *esp -= 4;
+        **(uint32_t **)esp = (uint32_t) (*esp + 4);
+
+        // 5. argc를 스택에 푸시
+        *esp -= 4;
+        *(uint32_t *)(*esp) = argc;
+
+        // 6. return address로 사용할 0을 스택에 푸시
+        *esp -= 4;
+        **(uint32_t  **)(esp) = 0;
+      }
       else
         palloc_free_page (kpage);
     }
