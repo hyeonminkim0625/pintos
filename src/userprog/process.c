@@ -155,7 +155,7 @@ process_wait (tid_t child_tid UNUSED)
     return -1;
 
   //자식이 죽기까지 sema_down해서 기다리고 죽으면 코드 받고 리스트에서 제거함
-  sema_down(cur->wait);
+  sema_down(&(cur->wait));
   exit_code = child_thread->exit_code;
   list_remove(&child_thread->child_elem);
   return exit_code;

@@ -12,6 +12,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -200,6 +201,11 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+#ifdef USERPROG
+  t->file_list = palloc_get_page(0);
+  if (!t->file_list) return TID_ERROR;
+#endif
+
   /* Add to run queue. */
   thread_unblock (t);
   check_priority();
@@ -269,7 +275,7 @@ compare_thread_priority (const struct list_elem *a, const struct list_elem *b, v
 void check_priority(void){
   if (thread_current() == idle_thread || list_empty(&ready_list))
     return;
-  if(thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
+  if(!intr_context() && thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
     thread_yield();
 }
 
@@ -365,7 +371,8 @@ void
 update_thread_recent_cpu(void)
 {
   struct thread *cur = thread_current();
-  if (cur != idle_thread){
+  if (cur != idle_thread)
+  {
     int recent_cpu = cur->recent_cpu;
     cur->recent_cpu = add_fp_and_int(recent_cpu, 1);
   }
@@ -405,7 +412,6 @@ thread_current (void)
      recursion can cause stack overflow. */
   ASSERT (is_thread (t));
   ASSERT (t->status == THREAD_RUNNING);
-
   return t;
 }
 
@@ -631,11 +637,22 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->donation_list);
   t->wait_lock = NULL;
   t->magic = THREAD_MAGIC;
+  
 #ifdef USERPROG
+  if (t != initial_thread)
+      t->parent = thread_current();
+  else
+      t->parent = NULL;
   list_init(&t->child_lists);
-  t->parent = thread_current();
+
+  if (t != initial_thread)
+    list_push_back(&(t->parent->child_lists), &(t->child_elem));
+
   t->loading = false;
+  t->exit_code = -1;
   sema_init(&t->wait, 0);
+  sema_init(&t->exec, 0);
+  t->filecount = 2;
 #endif
 
   old_level = intr_disable ();
