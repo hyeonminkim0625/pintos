@@ -210,7 +210,7 @@ thread_create (const char *name, int priority,
   t->file_list = palloc_get_page(0);
   if (!t->file_list) return TID_ERROR;
   t->loading = false;
-  t->exit_code = -1;
+  t->exit_code = 0;
   t->filecount = 2;
 #endif
 

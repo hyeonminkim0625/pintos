@@ -25,6 +25,7 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 struct thread *get_child_thread(tid_t child_tid);
+void push_stack (void **esp);
 extern struct lock filelock;
 
 
@@ -38,7 +39,7 @@ char *argv[64];
 tid_t
 process_execute (const char *file_name) 
 {
-  printf("process_excute1\n");
+  // printf("process_excute1\n");
   char *fn_copy;
   tid_t tid;
   char *fn_temp;
@@ -58,14 +59,14 @@ process_execute (const char *file_name)
   token=strtok_r(fn_temp, " ", &temp);
   tid = thread_create (token, PRI_DEFAULT, start_process, fn_copy);
   // 자식 thread를 만들고 난 후 자식이 load되기 전까지 죽으면 안되기 때문에 sema_down으로 기다리게 만듦
-  printf("tid : %d\n", tid);
+  // printf("tid : %d\n", tid);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
-  printf("process_excute2\n");
+  // printf("process_excute2\n");
   // sema_down(&get_child_thread(tid)->load);
-  printf("process_excute2\n");
+  // printf("process_excute2\n");
   palloc_free_page(fn_temp);
-  printf("process_excut3e\n");
+  // printf("process_excut3e\n");
   return tid;
 }
 
@@ -74,7 +75,7 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
-  printf("strart here!\n");
+  // printf("strart here!\n");
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
@@ -83,15 +84,15 @@ start_process (void *file_name_)
   char *token;
   char *temp;
 
-
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  printf("strart here!\n");
+  // printf("strart here!\n");
+
   fn_temp = palloc_get_page (0);
-  strlcpy (fn_temp, file_name, PGSIZE);
+  strlcpy (fn_temp, file_name, strlen(file_name) + 1);
 
   argc = 0;
   for(token=strtok_r(fn_temp, " ", &temp); token != NULL ; token = strtok_r(NULL, " ", &temp))
@@ -105,18 +106,21 @@ start_process (void *file_name_)
   success = load (argv[0], &if_.eip, &if_.esp);
 
   if(success){
-    printf("success!\n");
-    hex_dump(if_.esp,if_.esp, PHYS_BASE - if_.esp, true);
+    // printf("success!\n");
+    push_stack (&if_.esp);
+    // hex_dump(if_.esp,if_.esp, PHYS_BASE - if_.esp, true);
     //성공적으로 load되면 부모의 sema를 up 시켜 깨어나게 만듦
     cur->loading = true;
   }
   sema_up(&cur->exec);
+  palloc_free_page(fn_temp);
+
   /* If load failed, quit. */
-  printf("strart here!\n");
+  // printf("strart here!\n");
   palloc_free_page (file_name);
   if (!success)
     thread_exit ();
-  printf("strart here!\n");
+  // printf("strart here!\n");
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -124,6 +128,7 @@ start_process (void *file_name_)
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
+  // printf("strart here!\n");
   NOT_REACHED ();
 }
 
@@ -145,12 +150,12 @@ process_wait (tid_t child_tid UNUSED)
     return -1;
   //자식이 죽기까지 sema_down해서 기다리고 죽으면 코드 받고 리스트에서 제거함
   sema_down(&child_thread->wait);
-  printf("here3!\n");
+  // printf("here3!\n");
   exit_code = child_thread->exit_code;
   list_remove(&child_thread->child_elem);
-  printf("here4!\n");
+  // printf("here4!\n");
   sema_up(&child_thread->load);
-  printf("here5!\n");
+  // printf("here5!\n");
   return exit_code;
 }
 
@@ -188,9 +193,9 @@ process_exit (void)
   }
   file_close(cur->load_file);
   
-  printf("process_exit\n");
+  // printf("process_exit\n");
   palloc_free_page(cur->file_list);
-  printf("process_exit\n");
+  // printf("process_exit\n");
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -302,20 +307,20 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 bool
 load (const char *file_name, void (**eip) (void), void **esp) 
 {
-  printf("load!\n");
+  // printf("load!\n");
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
   off_t file_ofs;
   bool success = false;
   int i;
-  printf("load!\n");
+  // printf("load!\n");
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-  printf("load!\n");
+  // printf("load!\n");
 
   lock_acquire(&filelock);
   /* Open executable file. */
@@ -328,7 +333,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
   t->load_file = file;
   lock_release(&filelock);
-  printf("load!\n");
+  file_deny_write(file);
+
+  // printf("load!\n");
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -341,7 +348,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: error loading executable\n", file_name);
       goto done; 
     }
-  printf("load!\n");
+  // printf("load!\n");
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
@@ -400,7 +407,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
           break;
         }
     }
-  printf("load!\n");
+  // printf("load!\n");
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
@@ -413,7 +420,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
  done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
-  printf("load!\n");
+  // printf("load!\n");
   return success;
 }
 
@@ -532,8 +539,6 @@ setup_stack (void **esp)
 {
   uint8_t *kpage;
   bool success = false;
-  int i;
-  char *arg_addr[argc];
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
@@ -542,40 +547,53 @@ setup_stack (void **esp)
       if (success)
       {
         *esp = PHYS_BASE;
-        for (i=0; i < argc; i++) {
-          int len = strlen(argv[argc-1-i]) + 1;
-          *esp -= len;
-          strlcpy(*esp, argv[argc-1-i], len);
-          arg_addr[i] = *esp;
-        }
-        
-        // 2. Word align (4바이트 배수로 맞추기 위해 패딩 추가)
-        *esp -= ((uint32_t)*esp) % 4;
-
-        // 3. 각 인자들의 주소를 argv 배열에 역순으로 푸시
-        *esp -= 4; // NULL pointer sentinel
-        *(char **)(*esp) = 0;
-        for (i=0; i < argc; i++) {
-            *esp -= 4;
-            **(uint32_t **)(esp) = arg_addr[argc-1-i];
-        }
-
-        // 4. argv 포인터(배열의 시작 주소)를 스택에 푸시
-        *esp -= 4;
-        **(uint32_t **)esp = (uint32_t) (*esp + 4);
-
-        // 5. argc를 스택에 푸시
-        *esp -= 4;
-        *(uint32_t *)(*esp) = argc;
-
-        // 6. return address로 사용할 0을 스택에 푸시
-        *esp -= 4;
-        **(uint32_t  **)(esp) = 0;
       }
       else
         palloc_free_page (kpage);
     }
   return success;
+}
+
+void
+push_stack (void **esp)
+{
+  char *arg_addr[argc];
+  int i;
+  // printf("argc: %d\n", argc);
+  // for(i = 0; i < argc; i++)
+  // {
+  //   printf("argv[%d] : %s\n", i, argv[i]);
+  // }
+
+  for (i=0; i < argc; i++) {
+    int len = strlen(argv[argc-1-i]) + 1;
+    *esp -= len;
+    strlcpy(*esp, argv[argc-1-i], len);
+    arg_addr[argc-1-i] = *esp;
+  }
+  
+  // 2. Word align (4바이트 배수로 맞추기 위해 패딩 추가)
+  *esp -= ((uint32_t)*esp) % 4;
+
+  // 3. 각 인자들의 주소를 argv 배열에 역순으로 푸시
+  *esp -= 4; // NULL pointer sentinel
+  *(char **)(*esp) = 0;
+  for (i=0; i < argc; i++) {
+      *esp -= 4;
+      **(uint32_t **)(esp) = arg_addr[argc-1-i];
+  }
+
+  // 4. argv 포인터(배열의 시작 주소)를 스택에 푸시
+  *esp -= 4;
+  **(uint32_t **)esp = (uint32_t) (*esp + 4);
+
+  // 5. argc를 스택에 푸시
+  *esp -= 4;
+  *(uint32_t *)(*esp) = argc;
+
+  // 6. return address로 사용할 0을 스택에 푸시
+  *esp -= 4;
+  **(uint32_t  **)(esp) = 0;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel

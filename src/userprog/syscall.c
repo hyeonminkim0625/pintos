@@ -42,7 +42,6 @@ syscall_handler (struct intr_frame *f UNUSED)
   for(int i = 0; i < 3; i++){
     check_addr(esp + 4*i);
   }
-
   switch(sys_num)
   {
     case SYS_HALT:
@@ -111,7 +110,10 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
     } 
     default:
+    {
+      printf("just default!\n");
       exit(-1);
+    }
   }
 }
 
@@ -119,7 +121,10 @@ void
 check_addr(void *addr)
 {
   if(!is_user_vaddr(addr) || addr == NULL || !pagedir_get_page(thread_current()->pagedir, addr))
+  {
+    printf("address problem!\n");
     exit(-1);
+  }
 }
 
 void
@@ -147,9 +152,7 @@ exec (const char *cmd_line)
   tid = process_execute(fn_copy);
   if (tid == -1) return -1;
 
-  printf("okay\n");
   sema_down(&get_child_thread(tid)->load);
-  printf("pass\n");
   
   return tid;
 }
@@ -183,15 +186,16 @@ open (const char *file)
     lock_release(&filelock);
     return -1;
   }
-  else
+  if(!strcmp(thread_current()->name, file))
   {
-    struct thread *cur = thread_current();
-    int fd = cur->filecount;
-    cur->file_list[fd] = f; // 몇번째 파일 디스크립터인지 fd에 저장
-    cur->filecount++;
-    lock_release(&filelock);
-    return fd;
+    file_deny_write(f);
   }
+  struct thread *cur = thread_current();
+  int fd = cur->filecount;
+  cur->file_list[fd] = f; // 몇번째 파일 디스크립터인지 fd에 저장
+  cur->filecount++;
+  lock_release(&filelock);
+  return fd;
 }
 
 int
@@ -267,7 +271,7 @@ write (int fd, const void *buffer, unsigned size)
     struct file *f = get_file(fd);
     if(f == NULL) return -1;
     lock_acquire(&filelock);
-    byte += file_write(f,buffer,size);
+    byte = file_write(f,buffer,size);
     lock_release(&filelock);
   }
   return byte;
