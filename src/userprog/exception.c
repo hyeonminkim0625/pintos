@@ -144,7 +144,7 @@ page_fault (struct intr_frame *f)
 
   /* Count page faults. */
   page_fault_cnt++;
-
+   printf("page fault!\n");
   exit(-1);
 
   /* Determine cause. */

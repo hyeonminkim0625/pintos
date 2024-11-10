@@ -146,6 +146,11 @@ exec (const char *cmd_line)
   strlcpy(fn_copy, cmd_line, len);
   tid = process_execute(fn_copy);
   if (tid == -1) return -1;
+
+  printf("okay\n");
+  sema_down(&get_child_thread(tid)->load);
+  printf("pass\n");
+  
   return tid;
 }
 
