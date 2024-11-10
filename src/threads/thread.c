@@ -202,8 +202,16 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
 #ifdef USERPROG
+  t->parent = thread_current();
+  list_push_back(&(t->parent->child_lists), &(t->child_elem));
+  sema_init(&t->wait, 0);
+  sema_init(&t->exec, 0);
+  sema_init(&t->load, 0);
   t->file_list = palloc_get_page(0);
   if (!t->file_list) return TID_ERROR;
+  t->loading = false;
+  t->exit_code = -1;
+  t->filecount = 2;
 #endif
 
   /* Add to run queue. */
@@ -639,20 +647,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
   
 #ifdef USERPROG
-  if (t != initial_thread)
-      t->parent = thread_current();
-  else
-      t->parent = NULL;
   list_init(&t->child_lists);
-
-  if (t != initial_thread)
-    list_push_back(&(t->parent->child_lists), &(t->child_elem));
-
-  t->loading = false;
-  t->exit_code = -1;
-  sema_init(&t->wait, 0);
-  sema_init(&t->exec, 0);
-  t->filecount = 2;
 #endif
 
   old_level = intr_disable ();

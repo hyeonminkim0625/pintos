@@ -10,14 +10,15 @@
 #include "filesys/filesys.h"
 #include "filesys/file.h"
 #include "userprog/process.h"
+#include "userprog/pagedir.h"
 #include "threads/palloc.h"
 #include "threads/synch.h"
 #include <string.h>
 
 
-static void syscall_handler (struct intr_frame *);
+static void syscall_handler (struct intr_frame *f UNUSED);
 struct lock filelock;
-
+struct file *get_file(int fd);
 
 void
 syscall_init (void) 
@@ -76,49 +77,39 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
     case SYS_OPEN:
     {
-      exit(-1);
+      f->eax = open((const char *) argv[0]);
       break;
     }
     case SYS_FILESIZE:
     {
-      exit(-1);
+      f->eax = filesize((int) argv[0]);
       break;
     }
     case SYS_READ:
     {
-      exit(-1);
+      f->eax = read((int) argv[0], (void *) argv[1], (unsigned) argv[2]);
       break;
     }
     case SYS_WRITE:
     {
-      exit(-1);
+      f->eax = write((int) argv[0], (const void *) argv[1], (unsigned) argv[2]);
       break;
     }
     case SYS_SEEK:
     {
-      exit(-1);
+      seek((int) argv[0], (unsigned) argv[1]);
       break;
     }
     case SYS_TELL:
     {
-      exit(-1);
+      f->eax = tell((int) argv[0]);
       break;
     }
     case SYS_CLOSE:
     {
-      exit(-1);
+      close((int) argv[0]);
       break;
     } 
-    case SYS_MMAP:
-    {
-      exit(-1);
-      break;
-    }
-    case SYS_MUNMAP:
-    {
-      exit(-1);
-      break;
-    }
     default:
       exit(-1);
   }
@@ -127,7 +118,7 @@ syscall_handler (struct intr_frame *f UNUSED)
 void 
 check_addr(void *addr)
 {
-  if(!is_user_vaddr(addr) || addr == NULL)
+  if(!is_user_vaddr(addr) || addr == NULL || !pagedir_get_page(thread_current()->pagedir, addr))
     exit(-1);
 }
 
@@ -153,8 +144,9 @@ exec (const char *cmd_line)
   char *fn_copy = palloc_get_page(0);
   if(!fn_copy) exit(-1);
   strlcpy(fn_copy, cmd_line, len);
-
-  return process_execute(fn_copy);
+  tid = process_execute(fn_copy);
+  if (tid == -1) return -1;
+  return tid;
 }
 
 bool
@@ -178,41 +170,153 @@ remove (const char *file)
 int
 open (const char *file)
 {
-
+  check_addr((void*)file);
+  lock_acquire(&filelock);
+  struct file *f = filesys_open(file);
+  if(f==NULL)
+  {//not open
+    lock_release(&filelock);
+    return -1;
+  }
+  else
+  {
+    struct thread *cur = thread_current();
+    int fd = cur->filecount;
+    cur->file_list[fd] = f; // 몇번째 파일 디스크립터인지 fd에 저장
+    cur->filecount++;
+    lock_release(&filelock);
+    return fd;
+  }
 }
 
 int
 filesize (int fd)
 {
+  lock_acquire(&filelock);
+  struct file *f = get_file(fd);
+  if(f==NULL)
+  {
+    lock_release(&filelock);
+    return -1;
+  }
+  else
+  {
+    int size = file_length(f);
+    lock_release(&filelock);
+    return size;
+  }
 
 }
 
 int
 read (int fd, void *buffer, unsigned size)
 {
+  int bytes = 0;
+  unsigned i;
+  for(i = 0; i < size; i++)
+    check_addr(buffer + i);
 
+  if (fd<0)
+  {
+    return -1;
+  }
+  else if(fd==0)
+  {
+    for(i=0; i < size; i++)
+    {
+      *(char *)(buffer+i) = input_getc();
+      bytes++;
+    }
+  }
+  else
+  {
+    struct file *f = get_file(fd);
+    if(f==NULL) return -1;
+    else
+    {
+      lock_acquire(&filelock);
+      bytes = file_read(f, buffer, size);
+      lock_release(&filelock);
+    }
+  }
+  return bytes;
 }
 
 int
 write (int fd, const void *buffer, unsigned size)
 {
+  int byte = 0;
+  unsigned i;
+  for(i = 0; i < size; i++)
+    check_addr(buffer+i);
 
+  if(fd == 1)
+  {
+    lock_acquire(&filelock);
+    putbuf(buffer, size);
+    lock_release(&filelock);
+    byte = size;
+  }
+  else
+  {
+    struct file *f = get_file(fd);
+    if(f == NULL) return -1;
+    lock_acquire(&filelock);
+    byte += file_write(f,buffer,size);
+    lock_release(&filelock);
+  }
+  return byte;
 }
 
 void
 seek (int fd, unsigned position)
 {
-
+  lock_acquire(&filelock);
+  struct file *f = get_file(fd);
+  ASSERT(f != NULL);
+  file_seek(f, position);
+  lock_release(&filelock);
 }
 
 unsigned
 tell(int fd)
 {
-
+  lock_acquire(&filelock);
+  struct file *f = get_file(fd);
+  if(f==NULL)
+  {
+    lock_release(&filelock);
+    return -1;
+  }
+  else
+  {
+    unsigned pos = file_tell(f);
+    lock_release(&filelock);
+    return pos;
+  }
 }
 
 void
 close (int fd)
 {
+  lock_acquire(&filelock);
+  struct file *f = get_file(fd);
+  if(f==NULL)
+  {
+    lock_release(&filelock);
+  }
+  else
+  {
+    file_close(f);
+    thread_current()->file_list[fd] = NULL;
+    lock_release(&filelock);
+  }
+}
 
+struct file 
+*get_file(int fd)
+{
+  if(fd < thread_current()->filecount &&  fd > 1)
+    return thread_current()->file_list[fd];
+  return NULL;
 }

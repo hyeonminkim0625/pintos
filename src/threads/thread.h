@@ -110,6 +110,7 @@ struct thread
    struct thread *parent;
    struct semaphore wait;
    struct semaphore exec;
+   struct semaphore load;
    bool loading;
    struct file *load_file;
    struct file **file_list;
@@ -166,7 +167,7 @@ int thread_get_priority (void);
 void thread_set_priority (int);
 
 int thread_get_nice (void);
-void thread_set_nice (int);
+void thread_set_nice (int nice UNUSED);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
