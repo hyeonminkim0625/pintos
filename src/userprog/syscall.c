@@ -36,12 +36,13 @@ syscall_handler (struct intr_frame *f UNUSED)
   check_addr(esp);
 
   for(int i = 0; i < 3; i++){
-    argv[i] = *(int *)(esp + 4*i); 
+    check_addr(esp + 4*(i+1));
   }
 
   for(int i = 0; i < 3; i++){
-    check_addr(esp + 4*i);
+    argv[i] = *(int *)(esp + 4*(i+1)); 
   }
+
   switch(sys_num)
   {
     case SYS_HALT:
@@ -111,7 +112,6 @@ syscall_handler (struct intr_frame *f UNUSED)
     } 
     default:
     {
-      printf("just default!\n");
       exit(-1);
     }
   }
@@ -122,7 +122,6 @@ check_addr(void *addr)
 {
   if(!is_user_vaddr(addr) || addr == NULL || !pagedir_get_page(thread_current()->pagedir, addr))
   {
-    printf("address problem!\n");
     exit(-1);
   }
 }
