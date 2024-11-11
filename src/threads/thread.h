@@ -105,6 +105,10 @@ struct thread
    int niceness;
    int recent_cpu;
    int exit_code;
+   
+#ifdef USERPROG
+   /* Owned by userprog/process.c. */
+   uint32_t *pagedir;                  /* Page directory. */
    struct list child_lists;
    struct list_elem child_elem;
    struct thread *parent;
@@ -115,10 +119,6 @@ struct thread
    struct file *load_file;
    struct file **file_list;
    int filecount;
-   
-#ifdef USERPROG
-   /* Owned by userprog/process.c. */
-   uint32_t *pagedir;                  /* Page directory. */
 #endif
 
     /* Owned by thread.c. */
