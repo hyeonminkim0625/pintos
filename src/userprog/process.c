@@ -25,7 +25,6 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 struct thread *get_child_thread(tid_t child_tid);
-void push_stack (void **esp);
 extern struct lock filelock;
 
 
@@ -107,7 +106,7 @@ start_process (void *file_name_)
 
   if(success){
     // printf("success!\n");
-    push_stack (&if_.esp);
+    // push_stack (&if_.esp);
     // hex_dump(if_.esp,if_.esp, PHYS_BASE - if_.esp, true);
     //성공적으로 load되면 부모의 sema를 up 시켜 깨어나게 만듦
     cur->loading = true;
@@ -538,6 +537,7 @@ setup_stack (void **esp)
 {
   uint8_t *kpage;
   bool success = false;
+  char *arg_addr[argc];
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
@@ -546,53 +546,47 @@ setup_stack (void **esp)
       if (success)
       {
         *esp = PHYS_BASE;
+          int i;
+          // printf("argc: %d\n", argc);
+          // for(i = 0; i < argc; i++)
+          // {
+          //   printf("argv[%d] : %s\n", i, argv[i]);
+          // }
+
+          for (i=0; i < argc; i++) {
+            int len = strlen(argv[argc-1-i]) + 1;
+            *esp -= len;
+            strlcpy(*esp, argv[argc-1-i], len);
+            arg_addr[argc-1-i] = *esp;
+          }
+          
+          // 2. Word align (4바이트 배수로 맞추기 위해 패딩 추가)
+          *esp -= ((uint32_t)*esp) % 4;
+
+          // 3. 각 인자들의 주소를 argv 배열에 역순으로 푸시
+          *esp -= 4; // NULL pointer sentinel
+          *(char **)(*esp) = 0;
+          for (i=0; i < argc; i++) {
+              *esp -= 4;
+              **(uint32_t **)(esp) = arg_addr[argc-1-i];
+          }
+
+          // 4. argv 포인터(배열의 시작 주소)를 스택에 푸시
+          *esp -= 4;
+          **(uint32_t **)esp = (uint32_t) (*esp + 4);
+
+          // 5. argc를 스택에 푸시
+          *esp -= 4;
+          *(uint32_t *)(*esp) = argc;
+
+          // 6. return address로 사용할 0을 스택에 푸시
+          *esp -= 4;
+          **(uint32_t  **)(esp) = 0;
       }
       else
         palloc_free_page (kpage);
     }
   return success;
-}
-
-void
-push_stack (void **esp)
-{
-  char *arg_addr[argc];
-  int i;
-  // printf("argc: %d\n", argc);
-  // for(i = 0; i < argc; i++)
-  // {
-  //   printf("argv[%d] : %s\n", i, argv[i]);
-  // }
-
-  for (i=0; i < argc; i++) {
-    int len = strlen(argv[argc-1-i]) + 1;
-    *esp -= len;
-    strlcpy(*esp, argv[argc-1-i], len);
-    arg_addr[argc-1-i] = *esp;
-  }
-  
-  // 2. Word align (4바이트 배수로 맞추기 위해 패딩 추가)
-  *esp -= ((uint32_t)*esp) % 4;
-
-  // 3. 각 인자들의 주소를 argv 배열에 역순으로 푸시
-  *esp -= 4; // NULL pointer sentinel
-  *(char **)(*esp) = 0;
-  for (i=0; i < argc; i++) {
-      *esp -= 4;
-      **(uint32_t **)(esp) = arg_addr[argc-1-i];
-  }
-
-  // 4. argv 포인터(배열의 시작 주소)를 스택에 푸시
-  *esp -= 4;
-  **(uint32_t **)esp = (uint32_t) (*esp + 4);
-
-  // 5. argc를 스택에 푸시
-  *esp -= 4;
-  *(uint32_t *)(*esp) = argc;
-
-  // 6. return address로 사용할 0을 스택에 푸시
-  *esp -= 4;
-  **(uint32_t  **)(esp) = 0;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
