@@ -145,20 +145,13 @@ exec (const char *cmd_line)
 {
   tid_t tid;
   int len = strlen(cmd_line) + 1;
-  char *fn_copy = palloc_get_page(0);
-  if(!fn_copy) exit(-1);
-  strlcpy(fn_copy, cmd_line, len);
-  tid = process_execute(fn_copy);
+  tid = process_execute(cmd_line);
+
   if (tid == -1) {
-    palloc_free_page(fn_copy);  // fn_copy 메모리 해제
     return -1;
   }
 
   struct thread *child = get_child_thread(tid);
-  if (child == NULL) {
-    return -1;
-  }
-
   sema_down(&child->exec);  // 자식이 로드될 때까지 대기
   if (!child->loading) {     // 자식이 로드 실패한 경우
     return -1;
@@ -224,7 +217,6 @@ filesize (int fd)
     lock_release(&filelock);
     return size;
   }
-
 }
 
 int
