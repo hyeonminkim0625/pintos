@@ -12,6 +12,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -200,6 +201,19 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+#ifdef USERPROG
+  t->parent = thread_current();
+  list_push_back(&(t->parent->child_lists), &(t->child_elem));
+  sema_init(&t->wait, 0);
+  sema_init(&t->exec, 0);
+  sema_init(&t->load, 0);
+  t->file_list = palloc_get_page(0);
+  if (!t->file_list) return TID_ERROR;
+  t->loading = false;
+  t->exit_code = -1;
+  t->filecount = 2;
+#endif
+
   /* Add to run queue. */
   thread_unblock (t);
   check_priority();
@@ -269,7 +283,7 @@ compare_thread_priority (const struct list_elem *a, const struct list_elem *b, v
 void check_priority(void){
   if (thread_current() == idle_thread || list_empty(&ready_list))
     return;
-  if(thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
+  if(!intr_context() && thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)
     thread_yield();
 }
 
@@ -365,7 +379,8 @@ void
 update_thread_recent_cpu(void)
 {
   struct thread *cur = thread_current();
-  if (cur != idle_thread){
+  if (cur != idle_thread)
+  {
     int recent_cpu = cur->recent_cpu;
     cur->recent_cpu = add_fp_and_int(recent_cpu, 1);
   }
@@ -405,7 +420,6 @@ thread_current (void)
      recursion can cause stack overflow. */
   ASSERT (is_thread (t));
   ASSERT (t->status == THREAD_RUNNING);
-
   return t;
 }
 
@@ -430,6 +444,20 @@ thread_exit (void)
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
+  struct thread *cur = thread_current();
+  struct thread *temp;
+  struct list_elem *e;
+  struct list *child_list = &cur->child_lists;
+  // cur -> loading = false;
+  sema_up(&cur->wait);
+
+  for(e = list_begin(child_list); e != list_end(child_list); e = list_next(e))
+  {
+    temp = list_entry(e, struct thread, child_elem);
+    sema_up(&temp->load);
+  }
+  sema_down(&cur->load);
+  
   intr_disable ();
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
@@ -504,7 +532,6 @@ thread_set_nice (int nice UNUSED)
   calculate_priority(cur);
   check_priority();
   intr_set_level (old_level);
-
 }
 
 /* Returns the current thread's nice value. */
@@ -632,6 +659,10 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->donation_list);
   t->wait_lock = NULL;
   t->magic = THREAD_MAGIC;
+  
+#ifdef USERPROG
+  list_init(&t->child_lists);
+#endif
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
