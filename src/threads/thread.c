@@ -13,6 +13,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
+#include "vm/page.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -212,6 +213,7 @@ thread_create (const char *name, int priority,
   t->loading = false;
   t->exit_code = -1;
   t->filecount = 2;
+  
 #endif
 
   /* Add to run queue. */

@@ -1,0 +1,125 @@
+#include "vm/page.h"
+#include <hash.h>
+#include "vm/frame.h"
+#include "userprog/pagedir.h"
+#include "threads/malloc.h"
+#include "filesys/file.h"
+#include "threads/thread.h"
+#include "threads/vaddr.h"
+#include <string.h>
+
+extern struct lock ft_lock;
+
+void
+page_init(struct page *p, uint8_t type, void *va, bool write, bool load, struct file* file, size_t offset, size_t read_bytes, size_t zero_bytes)
+{
+    p->page_type = type;
+    p->va = va;
+    p->load = load;
+    p->write = write;
+    p->f = file;
+    p->offset = offset;
+    p->read_bytes = read_bytes;
+    p->zero_bytes = zero_bytes;
+}
+
+void 
+spt_init(struct hash *h)
+{
+    hash_init(h, spt_hash_func, spt_less_func, NULL);
+}
+
+static unsigned
+spt_hash_func(const struct hash_elem *e, void *aux)
+{
+    struct page *p = hash_entry(e, struct page, elem);
+    return hash_int((int) p->va);
+}
+
+static bool
+spt_less_func(const struct hash_elem *a,const struct hash_elem *b, void *aux)
+{
+  return hash_entry(a, struct page, elem)->va < hash_entry(b, struct page, elem);
+}
+
+bool
+spt_insert(struct hash *h, struct page *p)
+{
+    return hash_insert(h,&p->elem) != NULL ? true : false;
+}
+
+bool
+spt_delete(struct hash *h, struct page *p)
+{
+    struct thread *cur = thread_current();
+    lock_acquire(&ft_lock);
+    if (hash_delete(h,&p->elem))
+    {
+        free_frame(pagedir_get_page(cur->pagedir, p->va));
+        free(p);
+        lock_release(&ft_lock);
+        return true;
+    }
+    else
+    {
+        lock_release(&ft_lock);
+        return false;
+    }
+}
+
+struct page
+*page_find(void *addr)
+{
+    struct hash *h = &thread_current()->spt;
+    struct page p;
+    struct hash_elem *e;
+
+    p.va = pg_round_down(addr);
+    e = hash_find(h, &p.elem);
+
+    return e != NULL ? hash_entry(e, struct page, elem) : NULL;
+}
+
+void
+spt_delete_func(struct hash_elem *e, void *aux)
+{
+    struct page *p = hash_entry(e,struct page, elem);
+    struct thread *cur = thread_current();
+    if(p != NULL)
+    {
+        lock_acquire(&ft_lock);
+        if(p->load)
+        {
+            free_frame(pagedir_get_page(cur->pagedir, p->va));
+        }
+        free(p);
+        lock_release(&ft_lock);
+    }
+}
+
+void
+spt_destroy (struct hash *h)
+{
+    hash_destroy(h, spt_delete_func);
+}
+
+bool 
+load_file(void *addr, struct page *p)
+{
+    size_t bytes;
+    if(lock_held_by_current_thread(&ft_lock))
+    {
+        bytes = file_read_at(p->f, addr, p->read_bytes, p->offset);
+    }
+    else
+    {
+        lock_acquire(&ft_lock);
+        bytes = file_read_at(p->f, addr, p->read_bytes, p->offset);
+        lock_release(&ft_lock);
+    }
+    if(bytes != p->read_bytes)
+        return false;
+    
+    memset(addr + bytes, 0, p->zero_bytes);
+    return true;
+}
