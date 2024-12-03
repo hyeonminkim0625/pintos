@@ -178,7 +178,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
 
   if(thread_mlfqs)
   {
-    enum intr_level old_level = intr_disable();
     update_thread_recent_cpu();
 
     if(ticks % 4 == 0)
@@ -186,10 +185,9 @@ timer_interrupt (struct intr_frame *args UNUSED)
   
     if(ticks % TIMER_FREQ == 0)
     {
-      update_mlfqs(RECENT_CPU);
       calculate_load_avg();
+      update_mlfqs(RECENT_CPU);
     }
-    intr_set_level(old_level);
   }
   if (ticks >= min_awake_time){
     int64_t temp = awake_thread(ticks);

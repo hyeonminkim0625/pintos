@@ -30,9 +30,11 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
+  printf("syscall!\n");
   int argv[3];
   void *esp = f->esp;
   int sys_num = *(int *) (f->esp);
+  thread_current()->esp = esp;
   check_addr(esp);
 
   for(int i = 0; i < 3; i++){
@@ -143,6 +145,7 @@ exit(int status)
 pid_t
 exec (const char *cmd_line)
 {
+  printf("exec~~!!\n");
   tid_t tid;
   int len = strlen(cmd_line) + 1;
   char *fn_copy = palloc_get_page(0);

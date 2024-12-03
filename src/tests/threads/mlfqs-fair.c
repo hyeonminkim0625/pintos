@@ -89,7 +89,6 @@ test_mlfqs_fair (int thread_cnt, int nice_min, int nice_step)
       ti->start_time = start_time;
       ti->tick_count = 0;
       ti->nice = nice;
-
       snprintf(name, sizeof name, "load %d", i);
       thread_create (name, PRI_DEFAULT, load_thread, ti);
 

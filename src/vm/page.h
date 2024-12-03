@@ -28,6 +28,8 @@ struct page
     size_t swap_slot;
 };
 
+
+void print_hash(struct hash *h);
 void spt_init(struct hash *h);
 void page_init(struct page *p, uint8_t type, void *va, bool write, bool load, struct file* file, size_t offset, size_t read_bytes, size_t zero_bytes);
 static unsigned spt_hash_func(const struct hash_elem *e, void *aux);

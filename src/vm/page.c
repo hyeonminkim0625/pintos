@@ -1,14 +1,28 @@
 #include "vm/page.h"
-#include <hash.h>
 #include "vm/frame.h"
 #include "userprog/pagedir.h"
 #include "threads/malloc.h"
 #include "filesys/file.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include <hash.h>
 #include <string.h>
 
 extern struct lock ft_lock;
+
+void
+print_hash(struct hash *h)
+{
+    struct hash_iterator i;
+    hash_first(&i, h);
+
+    while (hash_next(&i))
+    {
+        struct page *p = hash_entry(hash_cur(&i), struct page, elem);
+        printf("Page va: %x\n", p->va);
+    }
+}
+
 
 void
 page_init(struct page *p, uint8_t type, void *va, bool write, bool load, struct file* file, size_t offset, size_t read_bytes, size_t zero_bytes)
@@ -23,17 +37,12 @@ page_init(struct page *p, uint8_t type, void *va, bool write, bool load, struct 
     p->zero_bytes = zero_bytes;
 }
 
-void 
-spt_init(struct hash *h)
-{
-    hash_init(h, spt_hash_func, spt_less_func, NULL);
-}
 
 static unsigned
 spt_hash_func(const struct hash_elem *e, void *aux)
 {
     struct page *p = hash_entry(e, struct page, elem);
-    return hash_int((int) p->va);
+    return hash_bytes(&p->va, sizeof(p->va));
 }
 
 static bool
@@ -42,42 +51,62 @@ spt_less_func(const struct hash_elem *a,const struct hash_elem *b, void *aux)
   return hash_entry(a, struct page, elem)->va < hash_entry(b, struct page, elem);
 }
 
+void 
+spt_init(struct hash *h)
+{
+    hash_init(h, spt_hash_func, spt_less_func, NULL);
+}
+
 bool
 spt_insert(struct hash *h, struct page *p)
 {
-    return hash_insert(h,&p->elem) != NULL ? true : false;
+    return hash_insert(h,&p->elem) == NULL ? true : false;
 }
 
 bool
 spt_delete(struct hash *h, struct page *p)
 {
     struct thread *cur = thread_current();
-    lock_acquire(&ft_lock);
     if (hash_delete(h,&p->elem))
     {
         free_frame(pagedir_get_page(cur->pagedir, p->va));
         free(p);
-        lock_release(&ft_lock);
         return true;
     }
-    else
-    {
-        lock_release(&ft_lock);
-        return false;
-    }
+    return false;
 }
 
 struct page
 *page_find(void *addr)
 {
     struct hash *h = &thread_current()->spt;
-    struct page p;
-    struct hash_elem *e;
+    struct hash_iterator i;
+    struct page *p;
+    hash_first(&i, h);
+    addr = pg_round_down(addr);
 
-    p.va = pg_round_down(addr);
-    e = hash_find(h, &p.elem);
+    while (hash_next(&i))
+    {
+        p = hash_entry(hash_cur(&i), struct page, elem);
+        if(p->va == addr)
+        {
+            return p;
+        }
+    }
+    return NULL;
+    // struct hash *h = &thread_current()->spt;
+    // struct page p;
+    // struct hash_elem *e;
 
-    return e != NULL ? hash_entry(e, struct page, elem) : NULL;
+    // p.va = pg_round_down(addr);
+
+    // printf("page number : %x\n", p.va);
+
+    // if(e = hash_find(h, &p.elem))
+    //     return hash_entry(e, struct page, elem);
+    // else
+    //     return NULL;
+    // return e != NULL ? hash_entry(e, struct page, elem) : NULL;
 }
 
 void
@@ -87,13 +116,11 @@ spt_delete_func(struct hash_elem *e, void *aux)
     struct thread *cur = thread_current();
     if(p != NULL)
     {
-        lock_acquire(&ft_lock);
         if(p->load)
         {
             free_frame(pagedir_get_page(cur->pagedir, p->va));
         }
         free(p);
-        lock_release(&ft_lock);
     }
 }
 
@@ -117,7 +144,7 @@ load_file(void *addr, struct page *p)
         bytes = file_read_at(p->f, addr, p->read_bytes, p->offset);
         lock_release(&ft_lock);
     }
-    if(bytes != p->read_bytes)
+    if(bytes != (int)p->read_bytes)
         return false;
     
     memset(addr + bytes, 0, p->zero_bytes);

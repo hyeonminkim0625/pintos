@@ -120,6 +120,7 @@ struct thread
    struct file *load_file;
    struct file **file_list;
    int filecount;
+   void* esp;
 
    struct hash spt;
 // #endif

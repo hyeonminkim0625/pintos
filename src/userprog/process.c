@@ -42,7 +42,6 @@ char *argv[64];
 tid_t
 process_execute (const char *file_name) 
 {
-  // printf("process_excute1\n");
   char *fn_copy;
   tid_t tid;
   char *fn_temp;
@@ -401,6 +400,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   done:
   /* We arrive here whether the load is successful or not. */
   //file_close (file);
+  print_hash(&thread_current()->spt);
   return success;
 }
 
@@ -505,18 +505,19 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       struct page *new_page = malloc(sizeof(struct page));
       if(new_page == NULL)
       {
-        free(new_page);
         return false;
       }
+      memset(new_page, 0, sizeof(struct page));
       page_init(new_page, PG_D, upage, writable, false, file, ofs, page_read_bytes, page_zero_bytes);
       lock_acquire(&ft_lock);
-      spt_insert(&thread_current()->spt, new_page);
+      bool s = spt_insert(&thread_current()->spt, new_page);
       lock_release(&ft_lock);
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
     }
+  // printf("load_segment!\n");
   return true;
 }
 
@@ -526,10 +527,9 @@ static bool
 setup_stack (void **esp) 
 {
   // uint8_t *kpage;
-  struct frame *new_frame;
   bool success = false;
   char *arg_addr[argc];
-  new_frame = allocate_frame (PAL_USER | PAL_ZERO);
+  struct frame *new_frame = allocate_frame (PAL_USER | PAL_ZERO);
   if (new_frame->va != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, new_frame->va, true);
@@ -576,15 +576,13 @@ setup_stack (void **esp)
     struct page *new_page = malloc(sizeof(struct page));
     if(new_page == NULL)
     {
-      free(new_page);
       return false;
     }
     memset(new_page, 0, sizeof(struct page));
-    void *va = ((uint8_t *) PHYS_BASE) - PGSIZE;
-    page_init(new_page, PG_S, pg_round_down(va), true, true,NULL,NULL,0,0);
+    page_init(new_page, PG_S, ((uint8_t *) PHYS_BASE) - PGSIZE, true, true, NULL, NULL, 0, 0);
     new_frame->page_ptr = new_page;
     lock_acquire(&ft_lock);
-    spt_insert(&thread_current()->spt, new_page);
+    bool s = spt_insert(&thread_current()->spt, new_frame->page_ptr);
     lock_release(&ft_lock);
   }
   return success;
@@ -613,6 +611,7 @@ install_page (void *upage, void *kpage, bool writable)
 bool 
 page_handle(struct page *p)
 {
+  printf("page handle!\n");
   bool success = false;
   struct frame *f = allocate_frame(PAL_USER);
   if(!f)
@@ -645,12 +644,14 @@ page_handle(struct page *p)
     return false;
   }
   p->load = true;
+  printf("page handle success!\n");
   return success;
 }
 
 bool
 expand_stack(void *addr)
 {
+  printf("expand_stack\n");
   bool success = false;
 
   void *va = pg_round_down(addr);
@@ -661,11 +662,9 @@ expand_stack(void *addr)
     return success;
   }
   
-  lock_acquire(&ft_lock);
   success = install_page(va, f->va, true);
   if(!success)
   {
-    lock_release(&ft_lock);
     free_frame(f->va);
     return success;
   }
@@ -673,14 +672,14 @@ expand_stack(void *addr)
   struct page *new_page = malloc(sizeof(struct page));
   if(!new_page)
   {
-    free(new_page);
-    lock_release(&ft_lock);
     return false;
   }
   memset(new_page, 0, sizeof(struct page));
   page_init(new_page, PG_S, va, true, true, NULL, NULL, 0 ,0);
   f->page_ptr = new_page;
+  lock_acquire(&ft_lock);
   spt_insert(&thread_current()->spt, new_page);
   lock_release(&ft_lock);
+  printf("expand_stack O\n");
   return success;
 }

@@ -23,7 +23,7 @@ void frame_table_init(void);
 struct frame* allocate_frame(enum palloc_flags flags);
 void free_frame(void *addr);
 void evict_frame(void); 
-struct list_elem* select_victim_frame(void);
+struct frame* select_victim_frame(void);
 
 
 #endif /* vm/frame.h */
