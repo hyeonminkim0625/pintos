@@ -13,5 +13,5 @@ struct thread *get_child_thread(tid_t child_tid);
 
 
 bool page_handle(struct page *p);
-bool expand_stack(void *addr);
+bool expand_stack(void *addr, void *esp);
 #endif /* userprog/process.h */

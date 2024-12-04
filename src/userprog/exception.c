@@ -149,27 +149,25 @@ page_fault (struct intr_frame *f)
 
   /* Count page faults. */
   page_fault_cnt++;
-  // exit(-1);
 
   /* Determine cause. */
    not_present = (f->error_code & PF_P) == 0;
    write = (f->error_code & PF_W) != 0;
    user = (f->error_code & PF_U) != 0;
 
-   printf("fault_addr : %p\n", fault_addr);
-   printf("find_page : %p\n", pg_round_down(fault_addr));
-   uint32_t base = PHYS_BASE;
-   uint32_t max = 0x800000;
-   uint32_t allow_stack_addr = base - max;
+   // printf("fault_addr : %p\n", fault_addr);
+   // printf("find_page : %p\n", pg_round_down(fault_addr));
    
-   void *esp = user ? f->esp : thread_current()->esp;
-
-   if(fault_addr > PHYS_BASE || !not_present)
+   // exit(-1);
+   if(is_kernel_vaddr(fault_addr) || !not_present)
    {
       if(lock_held_by_current_thread(&ft_lock))
          lock_release(&ft_lock);
-         exit(-1);
+      exit(-1);
    }
+
+   void *esp = user ? f->esp : thread_current()->esp;
+
    struct page *p = page_find(fault_addr);
    if(p)
    {
@@ -178,15 +176,8 @@ page_fault (struct intr_frame *f)
    }
    else
    {
-      printf("here!!\n");
-      if(fault_addr >= esp - 32)
-      {
-         if(!expand_stack(fault_addr))
-            exit(-1);
-         else
-            return;
-      }
-      exit(-1);
+      if(!expand_stack(fault_addr, esp))
+         exit(-1);
    }
 
    /* To implement virtual memory, delete the rest of the function

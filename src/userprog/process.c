@@ -184,7 +184,7 @@ process_exit (void)
   
   palloc_free_page(cur->file_list);
 
-  spt_destroy(&cur->spt);
+  // spt_destroy(&cur->spt); //이게 문제다.
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -400,7 +400,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   done:
   /* We arrive here whether the load is successful or not. */
   //file_close (file);
-  print_hash(&thread_current()->spt);
+  // print_hash(&thread_current()->spt);
   return success;
 }
 
@@ -485,36 +485,35 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       /* Get a page of memory. */
       // uint8_t *kpage = palloc_get_page (PAL_USER);
+      // struct frame *f = allocate_frame(PAL_USER);
+      // if(f->va == NULL) return false;
+
       // if (kpage == NULL)
       //   return false;
 
-      // /* Load this page. */
-      // if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
+      /* Load this page. */
+      // if (file_read (file, f->va, page_read_bytes) != (int) page_read_bytes)
       //   {
-      //     palloc_free_page (kpage);
+      //     free_frame (f->va);
       //     return false; 
       //   }
-      // memset (kpage + page_read_bytes, 0, page_zero_bytes);
+      // memset (f->va + page_read_bytes, 0, page_zero_bytes);
 
-      // /* Add the page to the process's address space. */
-      // if (!install_page (upage, kpage, writable)) 
+      /* Add the page to the process's address space. */
+      // if (!install_page (upage, f->va, writable)) 
       //   {
-      //     palloc_free_page (kpage);
+      //     free_frame (f->va);
       //     return false; 
       //   }
-      struct page *new_page = malloc(sizeof(struct page));
-      if(new_page == NULL)
-      {
-        return false;
-      }
-      memset(new_page, 0, sizeof(struct page));
-      page_init(new_page, PG_D, upage, writable, false, file, ofs, page_read_bytes, page_zero_bytes);
+      struct page *new_page = make_page(PG_D, upage, writable, false, file, ofs, page_read_bytes, page_zero_bytes);
+      if(!new_page) return false;
       lock_acquire(&ft_lock);
       bool s = spt_insert(&thread_current()->spt, new_page);
       lock_release(&ft_lock);
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
+      ofs += page_read_bytes;
       upage += PGSIZE;
     }
   // printf("load_segment!\n");
@@ -573,13 +572,9 @@ setup_stack (void **esp)
     }
   if(success)
   {
-    struct page *new_page = malloc(sizeof(struct page));
-    if(new_page == NULL)
-    {
-      return false;
-    }
-    memset(new_page, 0, sizeof(struct page));
-    page_init(new_page, PG_S, ((uint8_t *) PHYS_BASE) - PGSIZE, true, true, NULL, NULL, 0, 0);
+    struct page *new_page = make_page(PG_S, ((uint8_t *) PHYS_BASE) - PGSIZE, true, true, NULL, NULL, 0, 0);
+    if(!new_page) return false;
+
     new_frame->page_ptr = new_page;
     lock_acquire(&ft_lock);
     bool s = spt_insert(&thread_current()->spt, new_frame->page_ptr);
@@ -611,7 +606,7 @@ install_page (void *upage, void *kpage, bool writable)
 bool 
 page_handle(struct page *p)
 {
-  printf("page handle!\n");
+  // printf("page handle!\n");
   bool success = false;
   struct frame *f = allocate_frame(PAL_USER);
   if(!f)
@@ -643,16 +638,22 @@ page_handle(struct page *p)
     free_frame(f->va);
     return false;
   }
-  p->load = true;
-  printf("page handle success!\n");
+  p->load = success;
+  // printf("page handle success!\n");
   return success;
 }
 
 bool
-expand_stack(void *addr)
+expand_stack(void *addr, void *esp)
 {
-  printf("expand_stack\n");
+  // printf("expand_stack\n");
   bool success = false;
+  uint32_t base = 0xC0000000;
+  uint32_t max = 0x800000;
+  uint32_t allow_stack_space = base-max;
+  
+  if(!(addr >= esp - 32 && addr >=allow_stack_space))
+    return success;
 
   void *va = pg_round_down(addr);
   struct frame *f = allocate_frame(PAL_USER|PAL_ZERO);
@@ -669,17 +670,11 @@ expand_stack(void *addr)
     return success;
   }
 
-  struct page *new_page = malloc(sizeof(struct page));
-  if(!new_page)
-  {
-    return false;
-  }
-  memset(new_page, 0, sizeof(struct page));
-  page_init(new_page, PG_S, va, true, true, NULL, NULL, 0 ,0);
+  struct page *new_page = make_page(PG_S, va, true, true, NULL, NULL, 0 ,0);
   f->page_ptr = new_page;
   lock_acquire(&ft_lock);
   spt_insert(&thread_current()->spt, new_page);
   lock_release(&ft_lock);
-  printf("expand_stack O\n");
+  // printf("expand_stack O\n");
   return success;
 }

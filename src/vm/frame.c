@@ -8,6 +8,8 @@
 #include <list.h>
 #include <string.h>
 
+extern struct lock filelock;
+
 void
 frame_table_init(void)
 {
@@ -21,7 +23,7 @@ struct frame*
 allocate_frame(enum palloc_flags flags)
 {
     ASSERT(flags & PAL_USER);
-    printf("alloc frame!\n");
+    // printf("alloc frame!\n");
     struct frame *new_frame = malloc(sizeof(struct frame));
     if (!new_frame)
     { 
@@ -59,14 +61,13 @@ free_frame(void *addr)
         temp = list_entry(e , struct frame , frame_elem);
         if(temp->va == addr)
         {
-            lock_acquire(&ft_lock);
             temp->page_ptr->load = false;
             pagedir_clear_page(temp->t->pagedir,temp->page_ptr->va);            
             palloc_free_page(temp->va);
 
+            lock_acquire(&ft_lock);
             if(e == clock_point)
                 clock_point = list_remove(clock_point);
-
             else
                 list_remove(clock_point);
             lock_release(&ft_lock);
@@ -97,9 +98,9 @@ evict_frame(void)
         case PG_W:
             if(dirty)
             {
-                lock_acquire(&ft_lock);
+                lock_acquire(&filelock);
                 file_write_at(f->page_ptr->f, f->va, f->page_ptr->read_bytes, f->page_ptr->offset);
-                lock_release(&ft_lock);
+                lock_release(&filelock);
             }
             break;
         case PG_S:
