@@ -23,6 +23,7 @@
 
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 
 #include <list.h>
 
@@ -507,9 +508,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       //   }
       struct page *new_page = make_page(PG_D, upage, writable, false, file, ofs, page_read_bytes, page_zero_bytes);
       if(!new_page) return false;
-      lock_acquire(&ft_lock);
       bool s = spt_insert(&thread_current()->spt, new_page);
-      lock_release(&ft_lock);
+      if(!s)
+        return false;
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -576,9 +577,9 @@ setup_stack (void **esp)
     if(!new_page) return false;
 
     new_frame->page_ptr = new_page;
-    lock_acquire(&ft_lock);
     bool s = spt_insert(&thread_current()->spt, new_frame->page_ptr);
-    lock_release(&ft_lock);
+    if(!s)
+      return false;
   }
   return success;
 }
@@ -622,7 +623,7 @@ page_handle(struct page *p)
       success = load_file(f->va, p);
       break;
     case PG_S:
-      // swap_in
+      success = swap_in(p->slot, f->va);
       break;
     default:
       return success;
@@ -639,14 +640,12 @@ page_handle(struct page *p)
     return false;
   }
   p->load = success;
-  // printf("page handle success!\n");
   return success;
 }
 
 bool
 expand_stack(void *addr, void *esp)
 {
-  // printf("expand_stack\n");
   bool success = false;
   uint32_t base = 0xC0000000;
   uint32_t max = 0x800000;
@@ -672,9 +671,6 @@ expand_stack(void *addr, void *esp)
 
   struct page *new_page = make_page(PG_S, va, true, true, NULL, NULL, 0 ,0);
   f->page_ptr = new_page;
-  lock_acquire(&ft_lock);
-  spt_insert(&thread_current()->spt, new_page);
-  lock_release(&ft_lock);
-  // printf("expand_stack O\n");
+  success = spt_insert(&thread_current()->spt, new_page);
   return success;
 }

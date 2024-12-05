@@ -18,6 +18,7 @@ struct page
     bool load;
     bool write;
     struct file *f;
+    size_t slot;
 
     size_t offset;
     size_t read_bytes;

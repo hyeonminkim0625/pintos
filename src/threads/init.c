@@ -24,7 +24,7 @@
 #include "threads/thread.h"
 
 #include "vm/frame.h"
-
+#include "vm/swap.h"
 
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -118,6 +118,10 @@ main (void)
 #ifdef USERPROG
   exception_init ();
   syscall_init ();
+#endif
+
+#ifndef VM
+  swap_init();
 #endif
 
   /* Start thread scheduler and enable interrupts. */

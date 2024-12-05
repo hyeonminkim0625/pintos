@@ -5,6 +5,8 @@
 #include "threads/malloc.h"
 #include "filesys/file.h"
 #include "vm/page.h"
+#include "vm/swap.h"
+
 #include <list.h>
 #include <string.h>
 
@@ -91,8 +93,8 @@ evict_frame(void)
         case PG_D:
             if(dirty)
             {
+                f->page_ptr->slot = swap_out(f->page_ptr);
                 f->page_ptr->page_type = PG_S;
-                // swap_out관련
             }
             break;
         case PG_W:
@@ -104,7 +106,7 @@ evict_frame(void)
             }
             break;
         case PG_S:
-            // swap_out 관련
+            f->page_ptr->slot = swap_out(f->page_ptr);
             break;
     }
     

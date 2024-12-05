@@ -20,7 +20,7 @@ print_hash(struct hash *h)
     while (hash_next(&i))
     {
         struct page *p = hash_entry(hash_cur(&i), struct page, elem);
-        printf("Page va: %x\n", p->va);
+        printf("Page va: %p\n", p->va);
     }
 }
 
@@ -67,7 +67,11 @@ spt_init(struct hash *h)
 bool
 spt_insert(struct hash *h, struct page *p)
 {
-    return hash_insert(h,&p->elem) == NULL ? true : false;
+    bool success;
+    lock_acquire(&ft_lock);
+    success = hash_insert(h,&p->elem) == NULL ? true : false;
+    lock_release(&ft_lock);
+    return success;
 }
 
 bool
