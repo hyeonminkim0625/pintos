@@ -25,16 +25,14 @@ struct frame*
 allocate_frame(enum palloc_flags flags)
 {
     ASSERT(flags & PAL_USER);
-    // printf("alloc frame!\n");
     struct frame *new_frame = malloc(sizeof(struct frame));
     if (!new_frame)
-    { 
-        printf("malloc_problem\n");
         return NULL;
-    }
     
     memset(new_frame, 0, sizeof(struct frame));
     new_frame->t = thread_current();
+
+    lock_acquire(&ft_lock);
     new_frame->va = palloc_get_page(flags);
 
     while(!new_frame->va)
@@ -43,7 +41,6 @@ allocate_frame(enum palloc_flags flags)
         new_frame->va = palloc_get_page(flags);
     }
 
-    lock_acquire(&ft_lock);
     if(list_empty(&ft)) 
         clock_point = &new_frame->frame_elem;
 
@@ -66,15 +63,15 @@ free_frame(void *addr)
             temp->page_ptr->load = false;
             pagedir_clear_page(temp->t->pagedir,temp->page_ptr->va);            
             palloc_free_page(temp->va);
-
             lock_acquire(&ft_lock);
+
             if(e == clock_point)
                 clock_point = list_remove(clock_point);
             else
                 list_remove(clock_point);
-            lock_release(&ft_lock);
 
             free(temp);
+            lock_release(&ft_lock);
             break;
         }
     }

@@ -322,18 +322,16 @@ tell(int fd)
 void
 close (int fd)
 {
-  lock_acquire(&filelock);
+  if(!lock_held_by_current_thread(&filelock))
+    lock_acquire(&filelock);
+
   struct file *f = get_file(fd);
-  if(f==NULL)
-  {
-    lock_release(&filelock);
-  }
-  else
+  if(f)
   {
     file_close(f);
     thread_current()->file_list[fd] = NULL;
-    lock_release(&filelock);
   }
+  lock_release(&filelock);
 }
 
 struct file 

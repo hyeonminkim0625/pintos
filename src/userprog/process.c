@@ -532,7 +532,10 @@ setup_stack (void **esp)
   struct frame *new_frame = allocate_frame (PAL_USER | PAL_ZERO);
   if (new_frame->va != NULL) 
     {
+      lock_acquire(&ft_lock);
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, new_frame->va, true);
+      lock_release(&ft_lock);
+
       if (success)
       {
         *esp = PHYS_BASE;
@@ -607,7 +610,6 @@ install_page (void *upage, void *kpage, bool writable)
 bool 
 page_handle(struct page *p)
 {
-  // printf("page handle!\n");
   bool success = false;
   struct frame *f = allocate_frame(PAL_USER);
   if(!f)
@@ -634,7 +636,11 @@ page_handle(struct page *p)
     return success;
   }
 
-  if(!install_page(p->va, f->va, p->write))
+  lock_acquire(&ft_lock);
+  success = install_page(p->va, f->va, p->write);
+  lock_release(&ft_lock);
+
+  if(!success)
   {
     free_frame(f->va);
     return false;
@@ -658,11 +664,12 @@ expand_stack(void *addr, void *esp)
   struct frame *f = allocate_frame(PAL_USER|PAL_ZERO);
 
   if(!f)
-  {
     return success;
-  }
-  
+
+  lock_acquire(&ft_lock);
   success = install_page(va, f->va, true);
+  lock_release(&ft_lock);
+
   if(!success)
   {
     free_frame(f->va);

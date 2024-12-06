@@ -78,9 +78,14 @@ bool
 spt_delete(struct hash *h, struct page *p)
 {
     struct thread *cur = thread_current();
+
+    lock_acquire(&ft_lock);
+    void *addr = pagedir_get_page(cur->pagedir, p->va);
+    lock_release(&ft_lock);
+
     if (hash_delete(h,&p->elem))
     {
-        free_frame(pagedir_get_page(cur->pagedir, p->va));
+        free_frame(addr);
         free(p);
         return true;
     }
@@ -105,11 +110,16 @@ spt_delete_func(struct hash_elem *e, void *aux)
 {
     struct page *p = hash_entry(e, struct page, elem);
     struct thread *cur = thread_current();
+
+    lock_acquire(&ft_lock);
+    void *addr = pagedir_get_page(cur->pagedir, p->va);
+    lock_release(&ft_lock);
+
     if(p != NULL)
     {
         if(p->load)
         {
-            free_frame(pagedir_get_page(cur->pagedir, p->va));
+            free_frame(addr);
         }
         free(p);
     }
@@ -118,28 +128,28 @@ spt_delete_func(struct hash_elem *e, void *aux)
 void 
 spt_destroy(struct hash *h) 
 {
-    // hash_destroy(h, spt_delete_func);
-    struct hash_iterator i;
-    struct thread *cur = thread_current();
+    hash_destroy(h, spt_delete_func);
+    // struct hash_iterator i;
+    // struct thread *cur = thread_current();
 
-    // 초기 상태 출력
-    print_hash(h);
+    // // 초기 상태 출력
+    // print_hash(h);
 
-    // 모든 요소를 안전하게 순회하며 제거
-    hash_first(&i, h);
-    while (hash_next(&i)) 
-    {
-        struct page *p = hash_entry(hash_cur(&i), struct page, elem);
-        if (p != NULL) 
-        {
-            if (p->load) 
-            {
-                hash_delete(h, &p->elem);
-                free_frame(pagedir_get_page(cur->pagedir, p->va));
-            }
-            free(p);
-        }
-    }
+    // // 모든 요소를 안전하게 순회하며 제거
+    // hash_first(&i, h);
+    // while (hash_next(&i)) 
+    // {
+    //     struct page *p = hash_entry(hash_cur(&i), struct page, elem);
+    //     if (p != NULL) 
+    //     {
+    //         if (p->load) 
+    //         {
+    //             hash_delete(h, &p->elem);
+    //             free_frame(pagedir_get_page(cur->pagedir, p->va));
+    //         }
+    //         free(p);
+    //     }
+    // }
 }
 
 
