@@ -15,12 +15,14 @@ void
 print_hash(struct hash *h)
 {
     struct hash_iterator i;
+    struct thread *cur = thread_current();
     hash_first(&i, h);
-
+    printf("thread name : %s\n", cur->name);
     while (hash_next(&i))
     {
         struct page *p = hash_entry(hash_cur(&i), struct page, elem);
         printf("Page va: %p\n", p->va);
+        printf("Pagedir get page : %p\n", pagedir_get_page(cur->pagedir, p->va));
     }
 }
 
@@ -96,11 +98,24 @@ struct page
 *page_find(void *addr)
 {
     struct hash *h = &thread_current()->spt;
-    struct page p;
-    struct hash_elem *e;
+    // struct page p;
+    struct hash_elem *e = NULL;
 
-    p.va = pg_round_down(addr);
-    e = hash_find(h, &p.elem);
+    // p.va = pg_round_down(addr);
+    // e = hash_find(h, &p.elem);
+    struct hash_iterator i;
+    struct thread *cur = thread_current();
+    hash_first(&i, h);
+
+    while (hash_next(&i))
+    {
+        struct page *p = hash_entry(hash_cur(&i), struct page, elem);
+        if(p->va == pg_round_down(addr))
+        {
+            e = &p->elem;
+            break;
+        }
+    }
 
     return e != NULL ? hash_entry(e, struct page, elem) : NULL;
 }

@@ -13,7 +13,10 @@
 #include "userprog/pagedir.h"
 #include "threads/palloc.h"
 #include "threads/synch.h"
+#include "vm/page.h"
+#include "vm/frame.h"
 #include <string.h>
+#include "threads/malloc.h"
 
 
 static void syscall_handler (struct intr_frame *f UNUSED);
@@ -111,7 +114,17 @@ syscall_handler (struct intr_frame *f UNUSED)
     {
       close((int) argv[0]);
       break;
-    } 
+    }
+    case SYS_MMAP:
+    {
+      f->eax = mmap((int) argv[0], (void *) argv[1]);
+      break;
+    }
+    case SYS_MUNMAP:
+    {
+      munmap((int) argv[0]);
+      break;
+    }
     default:
     {
       exit(-1);
@@ -186,8 +199,12 @@ create (const char *file, unsigned initial_size)
 bool
 remove (const char *file)
 {
+  bool success = false;
   check_addr((void*)file);
-  return filesys_remove(file);
+  lock_acquire(&filelock);
+  success = filesys_remove(file);
+  lock_release(&filelock);
+  return success;
 }
 
 int
@@ -247,20 +264,22 @@ read (int fd, void *buffer, unsigned size)
   {
     for(i=0; i < size; i++)
     {
+      lock_acquire(&filelock);
       *(char *)(buffer+i) = input_getc();
+      lock_release(&filelock);
       bytes++;
     }
   }
   else
   {
     struct file *f = get_file(fd);
-    if(f==NULL) return -1;
-    else
-    {
-      lock_acquire(&filelock);
-      bytes = file_read(f, buffer, size);
-      lock_release(&filelock);
-    }
+    if(f==NULL) 
+      return -1;
+
+    lock_acquire(&filelock);
+    bytes = file_read(f, buffer, size);
+    lock_release(&filelock);
+
   }
   return bytes;
 }
@@ -340,4 +359,111 @@ struct file
   if(fd < thread_current()->filecount &&  fd > 1)
     return thread_current()->file_list[fd];
   return NULL;
+}
+
+int
+mmap(int fd, void *addr)
+{
+  struct file *f;
+  int size;
+  struct mmap_file *new_mmap;
+  int offset = 0;
+  struct thread *cur = thread_current();
+
+  if(!is_user_vaddr(addr))
+    exit(-1);
+
+  if(pg_ofs(addr) != 0 || !addr)
+    return -1;
+
+  if(fd < 2)
+    return -1;
+  
+  f = get_file(fd);
+  if(!f)
+    return -1;
+
+  lock_acquire(&filelock);
+  f = file_reopen(f);
+  lock_release(&filelock);
+  if(!f)
+    return -1;
+  
+  lock_acquire(&filelock);
+  size = file_length(f);
+  lock_release(&filelock);
+  if(!size)
+    return -1;
+  
+  new_mmap = malloc(sizeof(struct mmap_file));
+  if (!new_mmap)
+    return -1;
+  memset(new_mmap, 0 , sizeof(struct mmap_file));
+  
+  list_init(&new_mmap->page_list);
+  while(size > 0)
+  {
+    if (page_find(addr)) 
+      return -1;
+
+    size_t page_read_bytes = size < PGSIZE ? size : PGSIZE;
+    size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+    struct page* new_page = make_page(PG_W, addr, true, false, f, offset, page_read_bytes, page_zero_bytes);
+    if (!new_page) 
+      return false;
+
+    list_push_back(&new_mmap->page_list, &new_page->mmap_elem);
+    spt_insert(&cur->spt, new_page);
+		
+    addr += PGSIZE;
+    offset += PGSIZE;
+    size -= PGSIZE;
+  }
+  cur->mmapcount += 1;
+  list_push_back(&cur->mmap_list, &new_mmap->elem);
+  new_mmap->mapid = cur->mmapcount;
+  new_mmap->file = f;
+  return new_mmap->mapid;
+}
+
+void
+munmap(int mapid)
+{
+  struct thread *t = thread_current();
+  struct list_elem *e;
+  struct page *p;
+  struct mmap_file *temp = NULL;
+
+  for(e = list_begin(&t->mmap_list); e != list_end(&t->mmap_list); e = list_next(e))
+  {
+    temp = list_entry(e, struct mmap_file, elem);
+    if(temp->mapid == mapid)
+      break;
+  }
+  if(!temp)
+    return;
+
+  for(e = list_begin(&temp->page_list); e != list_end(&temp->page_list);)
+  {
+    p = list_entry(e, struct page, mmap_elem);
+    if(p->load)
+    {
+      if(pagedir_is_dirty(t->pagedir, p->va))
+      {
+        lock_acquire(&filelock);
+        file_write_at(p->f, p->va, p->read_bytes, p->offset);
+        lock_release(&filelock);
+        // lock_acquire(&ft_lock);
+        // void *addr = pagedir_get_page(t->pagedir, p->va);
+        // lock_release(&ft_lock);
+        // free_frame(addr);
+      }
+    }
+    p->load = false;
+    e = list_remove(e);
+    spt_delete(&t->spt, p);
+  }
+  list_remove(&temp->elem);
+  free(temp);
 }

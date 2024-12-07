@@ -122,8 +122,10 @@ struct thread
    int filecount;
    void* esp;
 
-   struct hash spt;
 // #endif
+   struct hash spt;
+   struct list mmap_list;
+   int  mmapcount;
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

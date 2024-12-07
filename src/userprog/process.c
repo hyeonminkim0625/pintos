@@ -175,6 +175,7 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  // print_hash(&cur->spt);
 
   int i;
   for(i = 2; i < cur->filecount; i++)
@@ -183,9 +184,12 @@ process_exit (void)
   }
   file_close(cur->load_file);
   
+  for(i = 0; i < cur->mmapcount; i++)
+    munmap(i);
+
   palloc_free_page(cur->file_list);
 
-  // spt_destroy(&cur->spt); //이게 문제다.
+  spt_destroy(&cur->spt); //이게 문제다.
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;

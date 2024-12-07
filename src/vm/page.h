@@ -24,8 +24,15 @@ struct page
     size_t read_bytes;
     size_t zero_bytes;
     struct hash_elem elem;
+    struct list_elem mmap_elem;
 };
 
+struct mmap_file {
+  int mapid;
+  struct file* file;
+  struct list page_list;
+  struct list_elem elem;
+};
 
 void print_hash(struct hash *h);
 void spt_init(struct hash *h);

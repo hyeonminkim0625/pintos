@@ -20,7 +20,6 @@ frame_table_init(void)
     clock_point = NULL;
 }
 
-
 struct frame*
 allocate_frame(enum palloc_flags flags)
 {
@@ -54,26 +53,30 @@ free_frame(void *addr)
 {
     struct list_elem *e;
     struct frame *temp;
+    struct frame *to_free = NULL;
 
     for(e = list_begin(&ft); e != list_end(&ft); e = list_next(e))
     {
-        temp = list_entry(e , struct frame , frame_elem);
+        temp = list_entry(e, struct frame, frame_elem);
         if(temp->va == addr)
         {
             temp->page_ptr->load = false;
-            pagedir_clear_page(temp->t->pagedir,temp->page_ptr->va);            
+            pagedir_clear_page(temp->t->pagedir, temp->page_ptr->va);
             palloc_free_page(temp->va);
+
             lock_acquire(&ft_lock);
-
-            if(e == clock_point)
-                clock_point = list_remove(clock_point);
-            else
-                list_remove(clock_point);
-
-            free(temp);
+            if(e == clock_point) 
+                clock_point = list_next(clock_point);
+            list_remove(e);
+            to_free = temp;
             lock_release(&ft_lock);
             break;
         }
+    }
+
+    if (to_free) 
+    {
+        free(to_free);
     }
 }
 
