@@ -4,6 +4,7 @@
 #include "devices/block.h"
 #include "threads/vaddr.h"
 #include "threads/interrupt.h"
+#include <stdio.h>
 
 #define SECTOR_NUM (PGSIZE/BLOCK_SECTOR_SIZE)
 
@@ -16,7 +17,8 @@ swap_init()
 {
 	lock_init(&swaplock);
 	swap_block = block_get_role(BLOCK_SWAP);
-	swap_map = bitmap_create(block_size(swap_block)/SECTOR_NUM);
+	int bitmap_size = block_size(swap_block)/SECTOR_NUM;
+	swap_map = bitmap_create(bitmap_size);
 }
 
 bool 
