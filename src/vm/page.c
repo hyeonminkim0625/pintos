@@ -22,10 +22,9 @@ print_hash(struct hash *h)
     {
         struct page *p = hash_entry(hash_cur(&i), struct page, elem);
         printf("Page va: %p\n", p->va);
-        printf("Pagedir get page : %p\n", pagedir_get_page(cur->pagedir, p->va));
+        // printf("Pagedir get page : %p\n", pagedir_get_page(cur->pagedir, p->va));
     }
 }
-
 
 struct page
 *make_page(uint8_t type, void *va, bool write, bool load, struct file* file, size_t offset, size_t read_bytes, size_t zero_bytes)
@@ -45,7 +44,6 @@ struct page
 
     return p;
 }
-
 
 static unsigned
 spt_hash_func(const struct hash_elem *e, void *aux)
@@ -98,24 +96,11 @@ struct page
 *page_find(void *addr)
 {
     struct hash *h = &thread_current()->spt;
-    // struct page p;
+    struct page p;
     struct hash_elem *e = NULL;
 
-    // p.va = pg_round_down(addr);
-    // e = hash_find(h, &p.elem);
-    struct hash_iterator i;
-    struct thread *cur = thread_current();
-    hash_first(&i, h);
-
-    while (hash_next(&i))
-    {
-        struct page *p = hash_entry(hash_cur(&i), struct page, elem);
-        if(p->va == pg_round_down(addr))
-        {
-            e = &p->elem;
-            break;
-        }
-    }
+    p.va = pg_round_down(addr);
+    e = hash_find(h, &p.elem);
 
     return e != NULL ? hash_entry(e, struct page, elem) : NULL;
 }
@@ -144,30 +129,7 @@ void
 spt_destroy(struct hash *h) 
 {
     hash_destroy(h, spt_delete_func);
-    // struct hash_iterator i;
-    // struct thread *cur = thread_current();
-
-    // // 초기 상태 출력
-    // print_hash(h);
-
-    // // 모든 요소를 안전하게 순회하며 제거
-    // hash_first(&i, h);
-    // while (hash_next(&i)) 
-    // {
-    //     struct page *p = hash_entry(hash_cur(&i), struct page, elem);
-    //     if (p != NULL) 
-    //     {
-    //         if (p->load) 
-    //         {
-    //             hash_delete(h, &p->elem);
-    //             free_frame(pagedir_get_page(cur->pagedir, p->va));
-    //         }
-    //         free(p);
-    //     }
-    // }
 }
-
-
 
 bool 
 load_file(void *addr, struct page *p)
