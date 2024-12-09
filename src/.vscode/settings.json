@@ -1,0 +1,11 @@
+{
+    "C_Cpp.errorSquiggles": "disabled",
+    "files.associations": {
+        "*.v": "verilog",
+        "malloc.h": "c",
+        "exception.h": "c",
+        "frame.h": "c",
+        "pagedir.h": "c",
+        "synch.h": "c"
+    }
+}

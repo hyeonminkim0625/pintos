@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include <hash.h>
 #include "threads/synch.h"
 
 /* States in a thread's life cycle. */
@@ -106,7 +107,7 @@ struct thread
    int recent_cpu;
    int exit_code;
    
-#ifdef USERPROG
+// #ifdef USERPROG
    /* Owned by userprog/process.c. */
    uint32_t *pagedir;                  /* Page directory. */
    struct list child_lists;
@@ -119,7 +120,12 @@ struct thread
    struct file *load_file;
    struct file **file_list;
    int filecount;
-#endif
+   void* esp;
+
+// #endif
+   struct hash spt;
+   struct list mmap_list;
+   int  mmapcount;
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

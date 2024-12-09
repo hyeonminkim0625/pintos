@@ -22,6 +22,10 @@
 #include "threads/palloc.h"
 #include "threads/pte.h"
 #include "threads/thread.h"
+
+#include "vm/frame.h"
+#include "vm/swap.h"
+
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/exception.h"
@@ -98,6 +102,7 @@ main (void)
   palloc_init (user_page_limit);
   malloc_init ();
   paging_init ();
+  frame_table_init();
 
   /* Segmentation. */
 #ifdef USERPROG
@@ -115,6 +120,7 @@ main (void)
   syscall_init ();
 #endif
 
+
   /* Start thread scheduler and enable interrupts. */
   thread_start ();
   serial_init_queue ();
@@ -125,6 +131,10 @@ main (void)
   ide_init ();
   locate_block_devices ();
   filesys_init (format_filesys);
+#endif
+
+#ifdef VM
+  swap_init();
 #endif
 
   printf ("Boot complete.\n");

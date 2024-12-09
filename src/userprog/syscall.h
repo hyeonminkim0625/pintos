@@ -3,6 +3,8 @@
 #include <stdbool.h>
 typedef int pid_t;
 
+
+
 void syscall_init (void);
 void check_addr(void *addr);
 void halt(void);
@@ -17,5 +19,7 @@ int write (int fd, const void *buffer, unsigned size);
 void seek (int fd, unsigned position);
 unsigned tell(int fd);
 void close (int fd);
+int mmap(int fd, void *addr);
+void munmap(int mapid);
 
 #endif /* userprog/syscall.h */
